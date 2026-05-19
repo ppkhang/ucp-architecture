@@ -40,15 +40,16 @@ Dùng Stripe test API (không tiền thật nhưng gọi API thật).
 **Chọn Option B: Mock payment.**
 
 - MockProvider giả lập hoàn toàn. Config qua biến môi trường:
-  - `PAYMENT_MOCK_MODE`: always_succeed | always_fail | random
+  - `PAYMENT_MOCK_MODE`: always_succeed | always_fail | random | callback_fail
   - `PAYMENT_MOCK_DELAY_MS`: 1000-3000
+- Mode `callback_fail`: giả lập partial failure — payment xử lý thành công nhưng callback về Trade Service thất bại. Cho phép test retry logic và reconciliation flow mà không cần cổng thanh toán thật.
 - UCP định nghĩa PaymentIntent pattern (giống Stripe) — không chạm vào thông tin nhạy cảm.
 - User xác thực thanh toán trực tiếp trên app của sàn (OTP, FaceID).
 - Extensible: MockProvider implement PaymentProviderInterface. Thay bằng StripeAdapter cũng implement interface đó. Strategy pattern.
 
 ## Consequences
 
-- **Tích cực:** An toàn, đơn giản, test được mọi luồng. Focus đúng vào kiến trúc.
+- **Tích cực:** An toàn, đơn giản, test được mọi luồng kể cả partial failure. Focus đúng vào kiến trúc.
 - **Tiêu cực:** Không demo end-to-end thật. Cần giải thích cho thầy tại sao mock là hợp lý.
-- **Extensibility:** MockProvider → StripeAdapter → VNPayAdapter. Strategy pattern. Thay adapter không sửa service.
+- **Extensibility:** MockProvider → StripeAdapter → VNPayAdapter. Strategy pattern. PaymentProviderInterface định nghĩa: `createIntent()`, `confirmPayment()`, `refund()`, `getStatus()`. Thay adapter = thay 1 dòng config (DI container inject adapter khác), không sửa Payment Service code. Đây là điểm kiến trúc quan trọng: UCP không coupling với bất kỳ payment provider cụ thể nào.
 - **BR liên quan:** BR-19 (UCP không giữ tiền), BR-20 (User xác thực trực tiếp), BR-21 (Payment fail → release), BR-22 (Refund khi cancel).

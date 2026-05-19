@@ -50,4 +50,5 @@ Gộp Catalog + Trade dùng chung 1 DB.
 - **Tích cực:** Service độc lập về data. Scale riêng. Failure isolation. Đúng DDD.
 - **Tiêu cực:** 5 PostgreSQL instances. Không JOIN cross-service.
 - **Mitigation:** Docker Compose chạy 5 DB trên cùng máy (dev). Production dùng managed DB.
+- **Catalog dependency:** Trade gọi Catalog qua HTTP — nếu Catalog down, Trade không lấy được thông tin sản phẩm. Giải pháp: Trade lưu snapshot tối thiểu của product (product_id, name, price tại thời điểm tạo order) trong Trade DB. Dữ liệu này đủ để hiển thị order history và xử lý flow mà không cần gọi lại Catalog. Với checkout flow, nếu Catalog không phản hồi, Gateway trả lỗi 503 cho Agent — Agent retry sau. Đây là trade-off chấp nhận được: checkout cần giá chính xác realtime, không dùng cache cũ.
 - **BR liên quan:** BR-10 (tồn kho real-time — Trade query Catalog API), BR-15 (chống oversell — atomic trong Trade DB).

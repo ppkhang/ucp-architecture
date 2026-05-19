@@ -69,5 +69,6 @@ Gateway gọi service bằng HTTP sync cho các thao tác cần response ngay. S
 ## Consequences
 
 - **Tích cực:** Agent trải nghiệm đơn giản. Notification không làm chậm request. Event có retry.
-- **Tiêu cực:** Phải maintain cả HTTP client và RabbitMQ. Gateway là SPOF — cần deploy nhiều instance.
+- **Tiêu cực:** Phải maintain cả HTTP client và RabbitMQ. Gateway là SPOF — cần deploy nhiều instance (load balancer phía trước).
+- **Resilience:** RabbitMQ cấu hình durable queue + persistent message — nếu broker restart, message không mất. Nếu broker down hoàn toàn, sync flow (query/command) không bị ảnh hưởng (không đi qua broker). Async event (notification) sẽ bị buffer tại service cho đến khi broker phục hồi. Dead-letter queue (DLQ) hứng message sau 3 lần retry thất bại — tránh infinite loop.
 - **Liên quan:** C4 Container Diagram thể hiện rõ 2 kiểu giao tiếp: mũi tên liền (sync) và mũi tên đứt (async qua broker).

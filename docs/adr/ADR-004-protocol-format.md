@@ -55,5 +55,6 @@ CRUD đơn giản dùng REST. Intent phức tạp dùng JSON-RPC qua POST /inten
 
 - **Tích cực:** Developer chọn style phù hợp. REST cho đơn giản, RPC cho workflow. Tương thích MCP.
 - **Tiêu cực:** 2 style cần document rõ. SDK phải wrap cả hai.
-- **Intent resolution:** Gateway maintain routing table: method name → service URL + handler. Thêm method mới = thêm 1 dòng config.
+- **MCP mapping:** MCP (Model Context Protocol) định nghĩa tool call dạng `{ name: "tool_name", arguments: {...} }`. JSON-RPC `/intent` của UCP map trực tiếp: `method` ↔ MCP `name`, `params` ↔ MCP `arguments`. Một MCP Server wrapper chỉ cần translate field name rồi forward đến UCP Gateway — không cần transform logic. Đây là lý do chính chọn JSON-RPC cho workflow thay vì REST (REST cần map HTTP verb + path + body → MCP tool call, phức tạp hơn).
+- **Intent resolution:** Gateway maintain routing table (config file): method name → service URL + handler. Tương tự service mesh dispatch nhưng đơn giản hơn — không cần sidecar proxy, chỉ là lookup table trong Gateway. Thêm method mới = thêm 1 dòng config, không sửa code.
 - **BR liên quan:** BR-16 (human-in-the-loop — confirm_order yêu cầu user đã approve proposal trước).
