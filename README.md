@@ -2,7 +2,7 @@
 
 > Xây dựng kiến trúc hệ thống cho Universal Commerce Protocol (UCP) theo hướng mở và khả mở
 
-**Đồ Án 2** — HK2 2025-2026 — Khoa Công nghệ Phần mềm, UIT HCMC
+**Đồ Án 2** — HK2 2025-2026 — Khoa Công nghệ Phần mềm, UIT - VNU
 
 - **Sinh viên:** Phạm Phú Khang — 23520706
 - **GVHD:** ThS. Nguyễn Công Hoan
@@ -83,4 +83,4 @@ AI Agent → UCP Gateway → Identity Service
 
 ---
 
-*Đồ Án 2 — UIT HCMC — 2026*
+*Đồ Án 2 — UIT — 2026*
