@@ -51,3 +51,10 @@ Hỗ trợ cả hai. API Key cho simple, OAuth 2.1 cho enterprise. JWT làm sess
 - **Tiêu cực:** Document phải giải thích rõ 2 mode. Cần migration path Key → OAuth.
 - **Key revocation:** API Key bị lộ → developer gọi DELETE /keys/{key_id} hoặc revoke trên dashboard. Identity Service đánh dấu key = revoked trong DB, có hiệu lực ngay (request tiếp theo bị reject). Developer generate key mới. JWT đang active của key cũ vẫn valid đến khi hết exp (tối đa 1 giờ) — trade-off chấp nhận được vì permission scope của API Key mặc định chỉ là read-only.
 - **BR liên quan:** BR-01, BR-02, BR-05, BR-06, BR-07.
+
+## Cập nhật v1.1 (đề xuất, 14/11/2026)
+
+- API Key chỉ còn `read_catalog`. `view_order` cần UserLink, vì đơn hàng thuộc về user.
+- Scope: thêm `cancel_order`, bỏ `initiate_payment` (không endpoint nào dùng).
+- JWT sống 5 phút, kèm kiểm tra session trong Redis mỗi lần gọi, để Unlink (BR-08) có hiệu lực ngay. Trade kiểm tra lại UserLink ở `confirm_order`.
+- Token OAuth của sàn được mã hóa, lưu tách khỏi UserLink, xoay vòng định kỳ (R-15).

@@ -34,7 +34,7 @@
 | JWT | JSON Web Token. Session token stateless. Chứa agent_id, permissions, exp. |
 | UserLink | Liên kết Agent với tài khoản user trên sàn. Quan hệ N:N. |
 | Consent | Sự đồng ý của user cho Agent thực hiện action (purchase, view_history). |
-| Permission Scope | Quyền cụ thể: read_catalog, create_order, initiate_payment, view_order. |
+| Permission Scope | Quyền cụ thể: read_catalog, create_order, initiate_payment, view_order, manage_identity. v1.1: thêm cancel_order, bỏ initiate_payment. |
 
 ## Trade & Order
 | Term | Definition |
@@ -69,4 +69,14 @@
 | PostgreSQL | Database chính. Mỗi service 1 instance (data isolation). |
 | Redis | In-memory cache. Session, quota, rate limit cho Gateway. |
 | RabbitMQ | Message broker. Pub/sub giữa services. Fanout exchange. |
-| Docker Compose | Đóng gói và chạy toàn bộ stack (14 containers) trên local. |
+| Docker Compose | Đóng gói và chạy toàn bộ stack (13 containers: 6 service, 5 DB, Redis, RabbitMQ) trên local. |
+
+## v1.1 (đề xuất)
+| Term | Definition |
+|------|-----------|
+| Source of truth | Bên nắm dữ liệu gốc. Ở v1.1, sàn là nguồn sự thật cho tồn kho, giá, đơn hàng (ADR-006). |
+| Merchant of record | Bên đứng tên thu tiền, chịu hoàn tiền và khiếu nại. Ở v1.1 là sàn (ADR-008). |
+| Trang xác nhận | Trang user đăng nhập tài khoản sàn để đồng ý proposal. Sàn host, UCP host dự phòng (ADR-007). |
+| Idempotency-Key | Header chống trùng. Gửi lại cùng khóa trả lại cùng kết quả (ADR-010). |
+| Transactional outbox | Ghi event vào bảng outbox trong cùng transaction với dữ liệu, relay đẩy lên broker sau (ADR-010). |
+| ExpiryWorker | Worker trong Trade hết hạn checkout và nhả hàng, không phụ thuộc broker (ADR-010). |

@@ -6,6 +6,8 @@ Auth: `Authorization: Bearer {jwt}` hoặc `X-API-Key: {key}`
 
 Format: Hybrid REST (read) + JSON-RPC (workflow)
 
+18 endpoints: 1 auth, 4 identity, 4 catalog, 6 trade, 2 payment, 1 events. 16 đường dẫn HTTP vì `create_checkout`, `confirm_order`, `cancel_order` dùng chung `POST /intent`. Thay đổi đề xuất cho v1.1 ở cuối file.
+
 ---
 
 ## Authentication
@@ -141,6 +143,7 @@ Tất cả workflow operations gửi qua `POST /v1/intent`.
 ```json
 { "method": "cancel_order", "params": { "order_id": "uuid", "reason": "User changed mind" } }
 ```
+Trade gọi `PlatformAdapter.cancelOrder` để sàn hoàn hàng về kho, khởi tạo refund nếu đã thanh toán.
 
 ### GET /orders/{id}
 Xem trạng thái đơn hàng.
@@ -183,6 +186,7 @@ data: { "event_type": "OrderStatusChanged", "payload": { "order_id": "uuid", "ol
 | 403 | UCP_FORBIDDEN | Không có permission |
 | 403 | UCP_NO_USER_LINK | Chưa liên kết user |
 | 403 | UCP_NO_CONSENT | User chưa consent |
+| 403 | UCP_AGENT_SUSPENDED | Agent bị suspend |
 | 429 | UCP_QUOTA_EXCEEDED | Vượt quota |
 | 429 | UCP_RATE_LIMITED | Vượt 60 req/min |
 | 409 | UCP_INSUFFICIENT_STOCK | Hết hàng |
@@ -195,3 +199,47 @@ data: { "event_type": "OrderStatusChanged", "payload": { "order_id": "uuid", "ol
 | 400 | UCP_BAD_REQUEST | Request không hợp lệ |
 | 404 | UCP_NOT_FOUND | Resource không tồn tại |
 | 500 | UCP_INTERNAL_ERROR | Lỗi server |
+
+Tổng: 18 error codes.
+
+---
+
+## v1.1 (đề xuất, chưa hiện thực)
+
+Theo [`docs/UCP_v1.1_Addendum.md`](../docs/UCP_v1.1_Addendum.md) và ADR-006 đến ADR-010.
+
+### Thay đổi chung
+- **Base URL:** một gateway dùng chung `https://api.ucp.example.com/v1`, `platform_id` đi theo mọi lời gọi liên quan đến sàn (ADR-009).
+- **`Idempotency-Key`:** header bắt buộc với mọi `POST /intent`. Cùng khóa trả lại kết quả cũ trong 24 giờ (ADR-010).
+- **Phiên làm việc:** JWT sống 5 phút, kiểm tra session mỗi lần gọi. API Key chỉ còn `read_catalog`.
+- **Scope:** thêm `cancel_order`, bỏ `initiate_payment`.
+
+### Intent và endpoint mới
+
+| ID | Method | Path | Mô tả | Auth |
+|----|--------|------|-------|------|
+| T7 | POST | `/intent {method: select_shipping_method}` | Chọn hình thức giao, proposal tính lại (UC-02 ALT-2) | JWT + `create_order` + UserLink |
+| T8 | POST | `/intent {method: apply_promotion}` | Áp mã giảm giá (UC-02 ALT-3) | JWT + `create_order` + UserLink |
+| T9 | POST | `/intent {method: cancel_checkout}` | Hủy phiên trước khi xác nhận, nhả hàng | JWT + `create_order` |
+| T10 | POST | `/intent {method: extend_checkout}` | Gia hạn 1 lần, không vượt hạn giữ hàng (R-12) | JWT + `create_order` |
+| X1 | GET | `/confirm/{proposal_id}` | Trang xác nhận dự phòng, user đăng nhập tài khoản sàn (ADR-007) | OAuth của sàn (user) |
+| X2 | POST | `/platform-events/{platform}` | Nhận webhook từ sàn (ADR-006) | Chữ ký webhook của sàn |
+| E2 | GET | `/events?after={seq}` | Poll dự phòng cho SSE, phát lại theo số thứ tự | JWT |
+
+### Thay đổi endpoint hiện có
+- **create_checkout:** response thêm `confirm_url` và `hold_expires_at` (null nếu sàn không giữ hàng). `expires_at` = thời điểm sớm hơn giữa TTL checkout và hạn giữ hàng.
+- **confirm_order:** cần bản ghi xác nhận của user, thiếu thì trả `UCP_CONFIRMATION_REQUIRED`. Response: `{ order_id, status: "pending_payment", payment_url }`. `placed` đến sau qua event `OrderPlaced`.
+- **cancel_order:** scope `cancel_order`, user xác nhận qua trang xác nhận. Sàn quyết định (`UCP_CANNOT_CANCEL`).
+- **GET /orders/{id}:** thêm `platform_order_ids[]` (một checkout có thể tách thành nhiều đơn theo người bán).
+
+### Mã lỗi mới
+
+| HTTP | Code | Mô tả |
+|------|------|-------|
+| 503 | UCP_PLATFORM_UNAVAILABLE | Sàn không phản hồi hoặc circuit breaker đang mở |
+| 409 | UCP_PRICE_CHANGED | Tổng tiền tăng so với proposal, hỏi lại user |
+| 403 | UCP_CONFIRMATION_REQUIRED | Chưa có xác nhận hợp lệ của user |
+| 409 | UCP_IDEMPOTENCY_CONFLICT | Cùng `Idempotency-Key` nhưng nội dung khác |
+| 403 | UCP_LINK_EXPIRED | Token của sàn hết hạn, cần liên kết lại |
+
+Tổng v1.1: 23 error codes.

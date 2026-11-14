@@ -47,7 +47,8 @@ CRUD đơn giản dùng REST. Intent phức tạp dùng JSON-RPC qua POST /inten
 **Chọn Option C: Hybrid REST + JSON-RPC.**
 
 - REST cho read: GET /products?q=..., GET /products/{id}, GET /orders/{id}, GET /payments/methods.
-- JSON-RPC cho workflow: POST /intent với method: create_checkout, confirm_order, cancel_order, initiate_payment, link_identity.
+- JSON-RPC cho workflow: POST /intent với method: create_checkout, confirm_order, cancel_order. Liên kết identity dùng REST `POST /agents/{id}/links`; thanh toán được khởi tạo bên trong confirm_order.
+- v1.1 thêm: select_shipping_method, apply_promotion, cancel_checkout, extend_checkout (xem `docs/UCP_v1.1_Addendum.md`).
 - Intent resolution: Gateway nhận method name, map đến service + handler qua config.
 - OpenAPI spec mô tả cả REST endpoints và /intent endpoint.
 

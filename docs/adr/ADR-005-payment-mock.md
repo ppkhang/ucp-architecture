@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Accepted |
+| **Status** | Accepted (v1.0). Hướng thay MockProvider bằng StripeAdapter được thay bởi [ADR-008](ADR-008-platform-merchant-of-record.md) ở v1.1 |
 | **Date** | 05/04/2026 |
 | **Author** | Phạm Phú Khang (23520706) |
 
