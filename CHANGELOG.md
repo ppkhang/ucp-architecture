@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-14: Thêm báo cáo đồ án
+
+- `deliverables/DA2_23520706_PhamPhuKhang.pdf`, `.docx`: báo cáo đầy đủ, đã áp dụng đính chính A1 đến A17 và thêm mục 5.6 "Đề xuất thiết kế v1.1 (bổ sung sau bảo vệ)". 9 bảng trong mục 5.6 dùng cùng kiểu bảng với phần còn lại của báo cáo (header nền đen, viền xám, dòng xen kẽ), có chú thích Bảng 5.6.1 đến 5.6.9.
+
 ## 2026-11-14: Đính chính và đề xuất v1.1
 
 Thiết kế v1.0 (bản bảo vệ 06/2026) giữ nguyên. Các file Word sửa bằng **Track Changes** (mở trong Word để xem và Accept), các file Excel có **comment** ở ô đã sửa ghi giá trị cũ. Chi tiết lý do ở [`docs/UCP_v1.1_Addendum.md`](docs/UCP_v1.1_Addendum.md).

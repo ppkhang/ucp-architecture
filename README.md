@@ -80,6 +80,7 @@ v1.1 là thiết kế trên giấy, chưa hiện thực. Thay đổi từng file
 ### Reference
 | File | Mô tả |
 |------|-------|
+| `deliverables/DA2_23520706_PhamPhuKhang.pdf`, `.docx` | Báo cáo đồ án đầy đủ, đã sửa theo đính chính v1.0 và có mục 5.6 đề xuất v1.1 |
 | `docs/UCP_Glossary.md` | Thuật ngữ |
 | `docs/UCP_v1.1_Addendum.md`, `deliverables/UCP_v1.1_Addendum.docx` | Đính chính và đề xuất v1.1 |
 | `diagrams/` | Toàn bộ diagram (BizArch, C4, Data, People & Systems) |
