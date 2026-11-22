@@ -231,7 +231,7 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/_admin/config")
     async def get_config():
-        return vars(platform.config)
+        return {k: v for k, v in vars(platform.config).items() if k != "webhook_secret"}
 
     @app.post("/_admin/config")
     async def set_config(body: ConfigIn):
@@ -242,7 +242,7 @@ def create_app(config: Config | None = None) -> FastAPI:
             setattr(platform.config, k, v)
         if "seed" in changes:
             platform.rng.seed(changes["seed"])
-        return vars(platform.config)
+        return {k: v for k, v in vars(platform.config).items() if k != "webhook_secret"}
 
     @app.post("/_admin/reset")
     async def reset():

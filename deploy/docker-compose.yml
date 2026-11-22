@@ -3,10 +3,10 @@ services:
     image: postgres:16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ucp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ucp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-ucp}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,7 +17,7 @@ services:
   redis:
     image: redis:7
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -27,7 +27,7 @@ services:
     build:
       context: ..
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-ucp}:${POSTGRES_PASSWORD:-ucp}@postgres:5432/${POSTGRES_DB:-ucp}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ucp}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-ucp}
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
@@ -47,7 +47,7 @@ services:
       MOCK_WEBHOOK_URL: ${MOCK_WEBHOOK_URL:-}
       MOCK_WEBHOOK_SECRET: ${MOCK_WEBHOOK_SECRET:-mock-webhook-secret}
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
 
 volumes:
   pgdata:
