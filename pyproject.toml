@@ -12,7 +12,7 @@ dependencies = [
 dev = ["pytest>=8", "httpx>=0.27", "pyyaml>=6", "openapi-spec-validator>=0.7"]
 
 [tool.setuptools.packages.find]
-include = ["ucp*"]
+include = ["ucp*", "mock_platform*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
