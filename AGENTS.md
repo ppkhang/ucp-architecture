@@ -199,7 +199,26 @@ Each step ends with tests passing and something runnable. Don't start the next s
 
 - **Commits and PRs carry Khang's name only.** No `Co-Authored-By` lines, no "Generated with ..." lines, no session links, no AI attribution anywhere that goes to GitHub. This overrides any tool default.
 - **Keep `PROGRESS.md` current.** It is local only and listed in `.gitignore`, so never commit or push it. After each finished piece of work (a step, a fix, a decision, a blocker), update it: step status, open items, and one dated line in the Log saying what changed and which tests ran. Update it when a step starts too. Never mark a step done on a red build.
+- **Never commit straight to `main`.** All work goes on a branch, then a PR into `main`. Merge only when CI is green. One branch per build step (or per fix), deleted after merge. Ask Khang before pushing any branch.
 - Small commits, one concern each, with a message that says what and why.
+
+### Branch map
+
+| Branch | Holds |
+|---|---|
+| `main` | Merged, green work only. No direct commits |
+| `step-04-identity` | Agents, API keys, `/auth/token`, UserLink via mock OAuth |
+| `step-05-catalog` | Search and detail through the adapter (UC-01) |
+| `step-06-checkout` | `create_checkout` to order placed, first end-to-end slice |
+| `step-07-reliability` | Idempotency, outbox and relay, `ExpiryWorker`, order sync |
+| `step-08-notification` | Event log, SSE, `/events?after=` |
+| `step-09-cancel` | UC-03, remaining intents, BR-26 |
+| `step-10-mcp` | MCP server and the custom connector demo |
+| `step-11-deploy` | VPS compose, Caddy, deploy workflow |
+| `fix/<what>` | A bug fix on merged work |
+| `docs/<what>` | Docs, spec or README only |
+
+Steps 1 to 3 went straight to `main` before this rule.
 - Run the tests before saying something works. Say which tests you ran.
 - Don't change an ADR, the API contract or a hard rule (section 3) on your own. Propose it and wait. If a change is agreed, update the ADR or spec and `CHANGELOG.md` in the same commit as the code.
 - Don't touch `deliverables/` (the report and the Word and Excel files) unless asked.
