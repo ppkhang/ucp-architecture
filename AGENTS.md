@@ -198,6 +198,7 @@ Each step ends with tests passing and something runnable. Don't start the next s
 ## 11. How to work in this repo
 
 - **Commits and PRs carry Khang's name only.** No `Co-Authored-By` lines, no "Generated with ..." lines, no session links, no AI attribution anywhere that goes to GitHub. This overrides any tool default.
+- **Keep `PROGRESS.md` current.** It is local only and listed in `.gitignore`, so never commit or push it. After each finished piece of work (a step, a fix, a decision, a blocker), update it: step status, open items, and one dated line in the Log saying what changed and which tests ran. Update it when a step starts too. Never mark a step done on a red build.
 - Small commits, one concern each, with a message that says what and why.
 - Run the tests before saying something works. Say which tests you ran.
 - Don't change an ADR, the API contract or a hard rule (section 3) on your own. Propose it and wait. If a change is agreed, update the ADR or spec and `CHANGELOG.md` in the same commit as the code.
