@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-11-22: Sửa lỗi sàn giả và cấu hình compose sau rà soát
+
+### Sửa
+- `mock_platform`: gộp các dòng cùng `variant_id` trước khi kiểm tra tồn kho. Trước đây hai dòng cùng biến thể (mỗi dòng 1, tồn kho 1) đều qua kiểm tra nên bán quá số lượng.
+- `mock_platform`: gọi lại `placeOrder` với cùng idempotency key giờ kiểm tra chủ đơn, người dùng khác nhận 404.
+- `mock_platform`: `/oauth/token` trả 400 khi body JSON sai hoặc không phải object (trước đây 500).
+- `mock_platform`: `/_admin/config` không còn trả `webhook_secret` (quy tắc cứng 13).
+- `deploy/docker-compose.yml`: Postgres, Redis và sàn giả chỉ bind `127.0.0.1`. `POSTGRES_PASSWORD` và `MOCK_WEBHOOK_SECRET` bắt buộc đặt trong `.env`, không còn giá trị mặc định. Thêm healthcheck cho `api` và `mock-platform`.
+- `ucp.common.config.get_settings()` có cache.
+
+Lưu ý: compose đọc `.env` ở thư mục `deploy/`, còn `.env.example` nằm ở thư mục gốc.
+
 ## 2026-11-14: Thêm báo cáo đồ án
 
 - `deliverables/DA2_23520706_PhamPhuKhang.pdf`, `.docx`: báo cáo đầy đủ, đã áp dụng đính chính A1 đến A17 và thêm mục 5.6 "Đề xuất thiết kế v1.1 (bổ sung sau bảo vệ)". 9 bảng trong mục 5.6 dùng cùng kiểu bảng với phần còn lại của báo cáo (header nền đen, viền xám, dòng xen kẽ), có chú thích Bảng 5.6.1 đến 5.6.9.
