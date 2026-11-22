@@ -31,6 +31,10 @@ services:
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -45,9 +49,13 @@ services:
       MOCK_MODE: ${MOCK_MODE:-always_succeed}
       MOCK_BASE_URL: ${MOCK_BASE_URL:-http://localhost:9000}
       MOCK_WEBHOOK_URL: ${MOCK_WEBHOOK_URL:-}
-      MOCK_WEBHOOK_SECRET: ${MOCK_WEBHOOK_SECRET:-mock-webhook-secret}
+      MOCK_WEBHOOK_SECRET: ${MOCK_WEBHOOK_SECRET:?set MOCK_WEBHOOK_SECRET in .env}
     ports:
       - "127.0.0.1:9000:9000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:9000/health')"]
+      interval: 10s
+      retries: 5
 
 volumes:
   pgdata:
