@@ -213,7 +213,13 @@ def create_app(config: Config | None = None) -> FastAPI:
     async def token(request: Request):
         raw = (await request.body()).decode()
         if request.headers.get("content-type", "").startswith("application/json"):
-            form = {k: str(v) for k, v in json.loads(raw or "{}").items()}
+            try:
+                body = json.loads(raw or "{}")
+            except ValueError:
+                body = None
+            if not isinstance(body, dict):
+                raise PlatformError(400, "INVALID_REQUEST", "body must be a JSON object")
+            form = {k: str(v) for k, v in body.items()}
         else:
             form = {k: v[0] for k, v in parse_qs(raw).items()}
         return platform.exchange(form)

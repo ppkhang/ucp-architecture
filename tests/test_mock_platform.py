@@ -375,3 +375,9 @@ def test_place_order_replay_is_not_visible_to_another_user(shop):
     co = checkout(shop, khang).json()["id"]
     assert place(shop, khang, co, "k-x").status_code == 201
     assert place(shop, linh, co, "k-x").status_code == 404
+
+
+def test_token_endpoint_rejects_bad_json(shop):
+    for body in ("{not json", "[1]"):
+        r = shop.post("/oauth/token", content=body, headers={"content-type": "application/json"})
+        assert r.status_code == 400
