@@ -172,7 +172,10 @@ class Platform:
     # -- time based rules ------------------------------------------------
 
     def tick(self) -> None:
-        """Apply expiry lazily: lapsed holds and unpaid orders past their deadline."""
+        """Apply expiry lazily: lapsed holds and unpaid orders past their deadline.
+
+        shortcut: scans every checkout and order on each request, fine for a demo-sized
+        mock, switch to a deadline heap if the mock is used for load tests."""
         now = self.now()
         for co in self.checkouts.values():
             if co.status == "open" and co.hold_expires_at and co.hold_expires_at <= now:
