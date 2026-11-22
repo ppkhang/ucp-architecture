@@ -47,7 +47,7 @@ v1.1 là thiết kế sau bảo vệ, không thuộc báo cáo đã nộp. Đang
 
 ## Hiện thực v1.1 (đang xây)
 
-Hiện thực theo [`AGENTS.md`](AGENTS.md) (quy tắc, thứ tự xây 11 bước). Python 3.12, FastAPI, modular monolith.
+Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bước). Python 3.12, FastAPI, modular monolith.
 
 | Bước | Nội dung | Trạng thái |
 |------|----------|------------|
@@ -115,7 +115,7 @@ Cấu trúc: `ucp/` (API), `mock_platform/` (sàn giả), `specs/openapi.yaml` (
 - **Message Broker:** RabbitMQ 3.13
 - **Deployment:** Docker Compose (dev) / Kubernetes (production)
 
-Đây là stack của thiết kế v1.0. Bản hiện thực v1.1 chạy một PostgreSQL với mỗi context một schema, RabbitMQ chỉ thêm khi có consumer thứ hai (xem `AGENTS.md`).
+Đây là stack của thiết kế v1.0. Bản hiện thực v1.1 chạy một PostgreSQL với mỗi context một schema, RabbitMQ chỉ thêm khi có consumer thứ hai (xem ADR-010).
 
 ## ADR Summary
 | ADR | Decision |

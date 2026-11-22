@@ -5,7 +5,7 @@ info:
   description: |
     Universal Commerce Protocol gateway, v1.1 (post-defense revision).
     Source: specs/APISpecs.md (v1.0 plus the v1.1 section), docs/UCP_v1.1_Addendum.md, ADR-006 to ADR-010.
-    The error body shape is proposed and not frozen (AGENTS.md section 8).
+    The error body shape is proposed and not frozen.
 servers:
   - url: https://api.ucp.example.com/v1
     description: Shared multi-platform gateway (ADR-009)
