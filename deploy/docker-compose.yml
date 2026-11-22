@@ -37,5 +37,17 @@ services:
       redis:
         condition: service_healthy
 
+  mock-platform:
+    build:
+      context: ..
+    command: ["uvicorn", "mock_platform.main:app", "--host", "0.0.0.0", "--port", "9000"]
+    environment:
+      MOCK_MODE: ${MOCK_MODE:-always_succeed}
+      MOCK_BASE_URL: ${MOCK_BASE_URL:-http://localhost:9000}
+      MOCK_WEBHOOK_URL: ${MOCK_WEBHOOK_URL:-}
+      MOCK_WEBHOOK_SECRET: ${MOCK_WEBHOOK_SECRET:-mock-webhook-secret}
+    ports:
+      - "9000:9000"
+
 volumes:
   pgdata:
