@@ -368,3 +368,10 @@ def test_same_variant_twice_cannot_oversell(shop):
 
 def test_admin_config_hides_webhook_secret(shop):
     assert "webhook_secret" not in shop.get("/_admin/config").json()
+
+
+def test_place_order_replay_is_not_visible_to_another_user(shop):
+    khang, linh = login(shop), login(shop, "linh", "linh123")
+    co = checkout(shop, khang).json()["id"]
+    assert place(shop, khang, co, "k-x").status_code == 201
+    assert place(shop, linh, co, "k-x").status_code == 404

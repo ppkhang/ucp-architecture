@@ -309,7 +309,7 @@ class Platform:
             order_id, used_for = self.order_keys[key]
             if used_for != checkout_id:
                 raise PlatformError(422, "IDEMPOTENCY_CONFLICT", "key already used for another checkout")
-            return self.order_view(self.orders[order_id])
+            return self.order_view(self.get_order(user, order_id))
         co = self.get_checkout(user, checkout_id)
         if co.status != "open":
             raise PlatformError(409, "CHECKOUT_EXPIRED", f"checkout is {co.status}")
