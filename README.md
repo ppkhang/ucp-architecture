@@ -43,7 +43,30 @@ Sau khi bảo vệ, thiết kế v1.0 được chạy thử với các kịch b�
 - **Phần C:** thiết kế v1.1, sàn là nguồn sự thật, kèm [ADR-006 đến ADR-010](docs/adr/).
 - **Phần D:** thứ tự hiện thực nếu xây UCP thành phần mềm chạy được.
 
-v1.1 là thiết kế trên giấy, chưa hiện thực. Thay đổi từng file ở [`CHANGELOG.md`](CHANGELOG.md).
+v1.1 là thiết kế sau bảo vệ, không thuộc báo cáo đã nộp. Đang hiện thực từng bước, xem mục [Hiện thực v1.1](#hiện-thực-v11-đang-xây). Thay đổi từng file ở [`CHANGELOG.md`](CHANGELOG.md).
+
+## Hiện thực v1.1 (đang xây)
+
+Hiện thực theo [`AGENTS.md`](AGENTS.md) (quy tắc, thứ tự xây 11 bước). Python 3.12, FastAPI, modular monolith.
+
+| Bước | Nội dung | Trạng thái |
+|------|----------|------------|
+| 1 | Khung repo, Docker Compose (Postgres, Redis), `/health`, CI | Xong |
+| 2 | [`specs/openapi.yaml`](specs/openapi.yaml), enum 23 mã lỗi | Xong |
+| 3 | Mock platform (OAuth, hold, đơn hàng, webhook có chữ ký) | Xong |
+| 4 đến 11 | Identity, Catalog, Trade, Idempotency và outbox, Notification, Cancel, MCP server, deploy | Chưa làm |
+
+Chạy thử:
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --build   # api :8000, mock platform :9000
+curl localhost:8000/health
+
+pip install -e ".[dev]"
+pytest
+```
+
+Cấu trúc: `ucp/` (API), `mock_platform/` (sàn giả), `specs/openapi.yaml` (hợp đồng API), `deploy/` (compose), `tests/`.
 
 ## Deliverables
 
@@ -91,6 +114,8 @@ v1.1 là thiết kế trên giấy, chưa hiện thực. Thay đổi từng file
 - **Cache:** Redis 7
 - **Message Broker:** RabbitMQ 3.13
 - **Deployment:** Docker Compose (dev) / Kubernetes (production)
+
+Đây là stack của thiết kế v1.0. Bản hiện thực v1.1 chạy một PostgreSQL với mỗi context một schema, RabbitMQ chỉ thêm khi có consumer thứ hai (xem `AGENTS.md`).
 
 ## ADR Summary
 | ADR | Decision |
