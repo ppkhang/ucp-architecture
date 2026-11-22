@@ -1,0 +1,874 @@
+openapi: 3.1.0
+info:
+  title: UCP API
+  version: 1.1.0-draft
+  description: |
+    Universal Commerce Protocol gateway, v1.1 (post-defense revision).
+    Source: specs/APISpecs.md (v1.0 plus the v1.1 section), docs/UCP_v1.1_Addendum.md, ADR-006 to ADR-010.
+    The error body shape is proposed and not frozen (AGENTS.md section 8).
+servers:
+  - url: https://api.ucp.example.com/v1
+    description: Shared multi-platform gateway (ADR-009)
+  - url: http://localhost:8000/v1
+    description: Local
+security:
+  - bearerJwt: []
+tags:
+  - name: auth
+  - name: identity
+  - name: catalog
+  - name: trade
+  - name: payment
+  - name: events
+  - name: platform
+
+paths:
+  /auth/token:
+    post:
+      tags: [auth]
+      operationId: createToken
+      summary: Exchange an API key for a 5 minute JWT
+      security:
+        - apiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grant_type]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [api_key]
+      responses:
+        "200":
+          description: Token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expires_in, permissions]
+                properties:
+                  token: { type: string }
+                  expires_in: { type: integer, example: 300 }
+                  permissions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Scope" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /agents:
+    post:
+      tags: [identity]
+      operationId: registerAgent
+      summary: Register an agent (public)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        "201":
+          description: Agent registered. The API key is shown once.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [agent_id, api_key, tier]
+                properties:
+                  agent_id: { type: string, format: uuid }
+                  api_key: { type: string }
+                  tier: { type: string, example: free }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+
+  /agents/{agent_id}/links:
+    post:
+      tags: [identity]
+      operationId: createUserLink
+      summary: Start linking the agent to a user's platform account
+      parameters:
+        - $ref: "#/components/parameters/AgentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform_id]
+              properties:
+                platform_id: { type: string }
+      responses:
+        "201":
+          description: Link started. The user opens auth_url to consent.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [link_id, auth_url, expires_in]
+                properties:
+                  link_id: { type: string, format: uuid }
+                  auth_url: { type: string, format: uri }
+                  expires_in: { type: integer, example: 600 }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /agents/{agent_id}/links/{link_id}:
+    delete:
+      tags: [identity]
+      operationId: deleteUserLink
+      summary: Unlink. Takes effect immediately.
+      parameters:
+        - $ref: "#/components/parameters/AgentId"
+        - name: link_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Unlinked }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /agents/{agent_id}/permissions:
+    get:
+      tags: [identity]
+      operationId: getPermissions
+      summary: Current permissions of the agent
+      parameters:
+        - $ref: "#/components/parameters/AgentId"
+      responses:
+        "200":
+          description: Permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [permissions]
+                properties:
+                  permissions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Scope" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /products:
+    get:
+      tags: [catalog]
+      operationId: searchProducts
+      summary: Search products (live through the adapter, short cache)
+      description: Scope read_catalog. If one platform does not answer, partial is true.
+      parameters:
+        - $ref: "#/components/parameters/PlatformId"
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: max_price, in: query, schema: { type: integer, minimum: 0 }, description: VND }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Search result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [products, total_count, page, partial]
+                properties:
+                  products:
+                    type: array
+                    items: { $ref: "#/components/schemas/ProductSummary" }
+                  total_count: { type: integer }
+                  page: { type: integer }
+                  partial:
+                    type: boolean
+                    description: True when at least one platform did not answer in time.
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /products/{product_id}:
+    get:
+      tags: [catalog]
+      operationId: getProduct
+      summary: Product detail
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+        - $ref: "#/components/parameters/PlatformId"
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /products/{product_id}/price:
+    get:
+      tags: [catalog]
+      operationId: getProductPrice
+      summary: Exact price right now (platform quote)
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+        - $ref: "#/components/parameters/PlatformId"
+        - { name: region, in: query, schema: { type: string } }
+        - { name: member_tier, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Price
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [list_price, selling_price, currency]
+                properties:
+                  list_price: { $ref: "#/components/schemas/Money" }
+                  selling_price: { $ref: "#/components/schemas/Money" }
+                  currency: { $ref: "#/components/schemas/Currency" }
+                  discount:
+                    type: object
+                    properties:
+                      type: { type: string, example: promotion }
+                      value: { $ref: "#/components/schemas/Money" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /products/{product_id}/stock:
+    get:
+      tags: [catalog]
+      operationId: getProductStock
+      summary: Stock (display cache only, ADR-006)
+      description: The platform decides stock at checkout. This is not a guarantee.
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+        - $ref: "#/components/parameters/PlatformId"
+      responses:
+        "200":
+          description: Stock
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available_qty, availability_type]
+                properties:
+                  available_qty: { type: integer, minimum: 0 }
+                  availability_type: { $ref: "#/components/schemas/AvailabilityType" }
+                  max_per_user: { type: [integer, "null"] }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /intent:
+    post:
+      tags: [trade]
+      operationId: intent
+      summary: Workflow operations (JSON-RPC style, ADR-004)
+      description: |
+        The `method` field selects the operation. `Idempotency-Key` is required. The key is unique per agent
+        and the stored result is replayed for 24 hours. The same key with a different body returns
+        UCP_IDEMPOTENCY_CONFLICT (ADR-010).
+        Needed scope: create_order for the checkout methods and confirm_order, cancel_order for cancel_order.
+        confirm_order and cancel_order need a valid user confirmation (ADR-007), else UCP_CONFIRMATION_REQUIRED.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 255 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - { $ref: "#/components/schemas/CreateCheckoutRequest" }
+                - { $ref: "#/components/schemas/SelectShippingMethodRequest" }
+                - { $ref: "#/components/schemas/ApplyPromotionRequest" }
+                - { $ref: "#/components/schemas/CancelCheckoutRequest" }
+                - { $ref: "#/components/schemas/ExtendCheckoutRequest" }
+                - { $ref: "#/components/schemas/ConfirmOrderRequest" }
+                - { $ref: "#/components/schemas/CancelOrderRequest" }
+              discriminator:
+                propertyName: method
+                mapping:
+                  create_checkout: "#/components/schemas/CreateCheckoutRequest"
+                  select_shipping_method: "#/components/schemas/SelectShippingMethodRequest"
+                  apply_promotion: "#/components/schemas/ApplyPromotionRequest"
+                  cancel_checkout: "#/components/schemas/CancelCheckoutRequest"
+                  extend_checkout: "#/components/schemas/ExtendCheckoutRequest"
+                  confirm_order: "#/components/schemas/ConfirmOrderRequest"
+                  cancel_order: "#/components/schemas/CancelOrderRequest"
+      responses:
+        "200":
+          description: Result of the method
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/CheckoutResult" }
+                  - { $ref: "#/components/schemas/CheckoutCancelled" }
+                  - { $ref: "#/components/schemas/ConfirmOrderResult" }
+                  - { $ref: "#/components/schemas/CancelOrderResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "402": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /orders:
+    get:
+      tags: [trade]
+      operationId: listOrders
+      summary: Orders of the linked user
+      description: Scope view_order and a UserLink.
+      parameters:
+        - $ref: "#/components/parameters/PlatformId"
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        "200":
+          description: Orders
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders, page]
+                properties:
+                  orders:
+                    type: array
+                    items: { $ref: "#/components/schemas/Order" }
+                  page: { type: integer }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /orders/{order_id}:
+    get:
+      tags: [trade]
+      operationId: getOrder
+      summary: Order status (a cache of the platform's status)
+      parameters:
+        - { name: order_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /shipping/options:
+    get:
+      tags: [trade]
+      operationId: listShippingOptions
+      summary: Available shipping methods
+      parameters:
+        - $ref: "#/components/parameters/PlatformId"
+        - { name: city, in: query, required: true, schema: { type: string } }
+        - { name: district, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Shipping options
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [options]
+                properties:
+                  options:
+                    type: array
+                    items: { $ref: "#/components/schemas/ShippingOption" }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /payments/methods:
+    get:
+      tags: [payment]
+      operationId: listPaymentMethods
+      summary: Payment methods the platform offers (information only)
+      parameters:
+        - $ref: "#/components/parameters/PlatformId"
+      responses:
+        "200":
+          description: Methods
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [methods]
+                properties:
+                  methods:
+                    type: array
+                    items: { type: string, example: ewallet }
+        "401": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+
+  /payments/{payment_id}:
+    get:
+      tags: [payment]
+      operationId: getPayment
+      summary: Payment status (tracked only, UCP does not execute payments, ADR-008)
+      parameters:
+        - { name: payment_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /events/stream:
+    get:
+      tags: [events]
+      operationId: streamEvents
+      summary: Server-sent events for the agent. Best effort, the log is the truth.
+      responses:
+        "200":
+          description: SSE stream. Each data line is an Event as JSON.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /events:
+    get:
+      tags: [events]
+      operationId: replayEvents
+      summary: Replay events after a sequence number (fallback for SSE)
+      parameters:
+        - { name: after, in: query, required: true, schema: { type: integer, minimum: 0 }, description: Per-agent sequence number }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200":
+          description: Events in order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/Event" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /confirm/{proposal_id}:
+    get:
+      tags: [platform]
+      operationId: confirmPage
+      summary: Fallback confirmation page (HTML), ADR-007
+      description: |
+        The user signs in with the platform account. The signed-in user must match the UserLink.
+        The page shows UCP's stored proposal snapshot, never anything the agent sent.
+        The confirmation is bound to the proposal hash, user, agent and expiry, and is single use.
+      security: []
+      parameters:
+        - { name: proposal_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: HTML page
+          content:
+            text/html:
+              schema: { type: string }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+
+  /platform-events/{platform}:
+    post:
+      tags: [platform]
+      operationId: receivePlatformEvent
+      summary: Inbound platform webhook (signature checked, deduped by event ID)
+      security:
+        - webhookSignature: []
+      parameters:
+        - { name: platform, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        "202": { description: Accepted }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+components:
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Lives 5 minutes. The session is checked on every call.
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Only gets read_catalog.
+    webhookSignature:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: Platform-specific signature, verified by the adapter's parseEvent.
+
+  parameters:
+    AgentId:
+      name: agent_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      schema: { type: string }
+    PlatformId:
+      name: platform_id
+      in: query
+      required: true
+      schema: { type: string, example: mock }
+
+  responses:
+    Error:
+      description: Error. The code decides the HTTP status (see ErrorCode).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorBody" }
+
+  schemas:
+    Scope:
+      type: string
+      enum: [read_catalog, view_order, create_order, cancel_order, manage_identity]
+    Money:
+      type: integer
+      minimum: 0
+      description: Integer VND, no floats.
+    Currency:
+      type: string
+      enum: [VND]
+    AvailabilityType:
+      type: string
+      enum: [in_stock, partial, pre_order, out_of_stock]
+    Timestamp:
+      type: string
+      format: date-time
+      description: UTC, ISO 8601.
+
+    ErrorCode:
+      type: string
+      description: 18 codes from v1.0 plus 5 from v1.1. Mirrors ucp/common/errors.py.
+      enum:
+        - UCP_UNAUTHORIZED
+        - UCP_SESSION_EXPIRED
+        - UCP_FORBIDDEN
+        - UCP_NO_USER_LINK
+        - UCP_NO_CONSENT
+        - UCP_AGENT_SUSPENDED
+        - UCP_QUOTA_EXCEEDED
+        - UCP_RATE_LIMITED
+        - UCP_INSUFFICIENT_STOCK
+        - UCP_PARTIAL_STOCK
+        - UCP_MAX_PER_USER
+        - UCP_CANNOT_CANCEL
+        - UCP_CHECKOUT_EXPIRED
+        - UCP_PRODUCT_UNAVAILABLE
+        - UCP_PAYMENT_FAILED
+        - UCP_BAD_REQUEST
+        - UCP_NOT_FOUND
+        - UCP_INTERNAL_ERROR
+        - UCP_PLATFORM_UNAVAILABLE
+        - UCP_PRICE_CHANGED
+        - UCP_CONFIRMATION_REQUIRED
+        - UCP_IDEMPOTENCY_CONFLICT
+        - UCP_LINK_EXPIRED
+      x-http-status:
+        UCP_UNAUTHORIZED: 401
+        UCP_SESSION_EXPIRED: 401
+        UCP_FORBIDDEN: 403
+        UCP_NO_USER_LINK: 403
+        UCP_NO_CONSENT: 403
+        UCP_AGENT_SUSPENDED: 403
+        UCP_QUOTA_EXCEEDED: 429
+        UCP_RATE_LIMITED: 429
+        UCP_INSUFFICIENT_STOCK: 409
+        UCP_PARTIAL_STOCK: 409
+        UCP_MAX_PER_USER: 409
+        UCP_CANNOT_CANCEL: 409
+        UCP_CHECKOUT_EXPIRED: 410
+        UCP_PRODUCT_UNAVAILABLE: 410
+        UCP_PAYMENT_FAILED: 402
+        UCP_BAD_REQUEST: 400
+        UCP_NOT_FOUND: 404
+        UCP_INTERNAL_ERROR: 500
+        UCP_PLATFORM_UNAVAILABLE: 503
+        UCP_PRICE_CHANGED: 409
+        UCP_CONFIRMATION_REQUIRED: 403
+        UCP_IDEMPOTENCY_CONFLICT: 409
+        UCP_LINK_EXPIRED: 403
+    ErrorBody:
+      type: object
+      description: Proposed shape, not frozen.
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { $ref: "#/components/schemas/ErrorCode" }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+
+    ProductSummary:
+      type: object
+      required: [product_id, platform_id, name, selling_price, currency, availability_type]
+      properties:
+        product_id: { type: string }
+        platform_id: { type: string }
+        name: { type: string }
+        selling_price: { $ref: "#/components/schemas/Money" }
+        currency: { $ref: "#/components/schemas/Currency" }
+        rating: { type: [number, "null"], minimum: 0, maximum: 5 }
+        availability_type: { $ref: "#/components/schemas/AvailabilityType" }
+    Product:
+      allOf:
+        - $ref: "#/components/schemas/ProductSummary"
+        - type: object
+          properties:
+            description: { type: string }
+            category: { type: string }
+            seller: { type: object, properties: { seller_id: { type: string }, name: { type: string } } }
+            variants:
+              type: array
+              items:
+                type: object
+                required: [variant_id]
+                properties:
+                  variant_id: { type: string }
+                  name: { type: string }
+                  selling_price: { $ref: "#/components/schemas/Money" }
+    ShippingOption:
+      type: object
+      required: [method_id, name, fee]
+      properties:
+        method_id: { type: string }
+        name: { type: string }
+        fee: { $ref: "#/components/schemas/Money" }
+        eta_days: { type: integer, minimum: 0 }
+
+    CheckoutItem:
+      type: object
+      required: [product_id, qty]
+      properties:
+        product_id: { type: string }
+        variant_id: { type: string }
+        qty: { type: integer, minimum: 1 }
+    ProposalLine:
+      type: object
+      required: [product_id, qty, unit_price]
+      properties:
+        product_id: { type: string }
+        variant_id: { type: string }
+        name: { type: string }
+        qty: { type: integer, minimum: 1 }
+        unit_price: { $ref: "#/components/schemas/Money" }
+    Proposal:
+      type: object
+      description: Snapshot of what the platform quoted. Promotion and shipping are part of the snapshot.
+      required: [items, subtotal, shipping_fee, discount, total, currency, stock_guaranteed]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProposalLine" }
+        subtotal: { $ref: "#/components/schemas/Money" }
+        shipping_fee: { $ref: "#/components/schemas/Money" }
+        discount: { $ref: "#/components/schemas/Money" }
+        total: { $ref: "#/components/schemas/Money" }
+        currency: { $ref: "#/components/schemas/Currency" }
+        stock_guaranteed:
+          type: boolean
+          description: False when the platform does not hold stock ("stock not guaranteed").
+
+    CreateCheckoutRequest:
+      type: object
+      required: [method, params]
+      properties:
+        method: { const: create_checkout }
+        params:
+          type: object
+          required: [platform_id, items]
+          properties:
+            platform_id: { type: string }
+            items:
+              type: array
+              minItems: 1
+              items: { $ref: "#/components/schemas/CheckoutItem" }
+            region: { type: string }
+          description: UCP stores no shipping address (ADR-007). The user picks one on the confirmation page.
+    SelectShippingMethodRequest:
+      type: object
+      required: [method, params]
+      properties:
+        method: { const: select_shipping_method }
+        params:
+          type: object
+          required: [checkout_id, shipping_method_id]
+          properties:
+            checkout_id: { type: string, format: uuid }
+            shipping_method_id: { type: string }
+    ApplyPromotionRequest:
+      type: object
+      required: [method, params]
+      properties:
+        method: { const: apply_promotion }
+        params:
+          type: object
+          required: [checkout_id, code]
+          properties:
+            checkout_id: { type: string, format: uuid }
+            code: { type: string }
+    CancelCheckoutRequest:
+      type: object
+      required: [method, params]
+      properties:
+        method: { const: cancel_checkout }
+        params:
+          type: object
+          required: [checkout_id]
+          properties:
+            checkout_id: { type: string, format: uuid }
+    ExtendCheckoutRequest:
+      type: object
+      required: [method, params]
+      properties:
+        method: { const: extend_checkout }
+        params:
+          type: object
+          required: [checkout_id]
+          properties:
+            checkout_id: { type: string, format: uuid }
+    ConfirmOrderRequest:
+      type: object
+      required: [method, params]
+      properties:
+        method: { const: confirm_order }
+        params:
+          type: object
+          required: [checkout_id]
+          properties:
+            checkout_id: { type: string, format: uuid }
+            payment_method: { type: string, example: ewallet }
+    CancelOrderRequest:
+      type: object
+      required: [method, params]
+      properties:
+        method: { const: cancel_order }
+        params:
+          type: object
+          required: [order_id]
+          properties:
+            order_id: { type: string, format: uuid }
+            reason: { type: string }
+
+    CheckoutResult:
+      type: object
+      description: Result of create_checkout, select_shipping_method, apply_promotion and extend_checkout.
+      required: [checkout_id, proposal, confirm_url, expires_at, hold_expires_at]
+      properties:
+        checkout_id: { type: string, format: uuid }
+        proposal: { $ref: "#/components/schemas/Proposal" }
+        confirm_url: { type: string, format: uri }
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+          description: The earlier of the checkout TTL and the hold expiry.
+        hold_expires_at:
+          oneOf:
+            - { $ref: "#/components/schemas/Timestamp" }
+            - { type: "null" }
+          description: Null when the platform does not hold stock.
+    CheckoutCancelled:
+      type: object
+      required: [checkout_id, status]
+      properties:
+        checkout_id: { type: string, format: uuid }
+        status: { const: cancelled }
+    ConfirmOrderResult:
+      type: object
+      required: [order_id, status, payment_url]
+      properties:
+        order_id: { type: string, format: uuid }
+        status: { const: pending_payment }
+        payment_url: { type: string, format: uri }
+    CancelOrderResult:
+      type: object
+      required: [order_id, status]
+      properties:
+        order_id: { type: string, format: uuid }
+        status: { const: cancelled }
+        refund_ref: { type: [string, "null"] }
+
+    OrderStatus:
+      type: string
+      enum: [pending_payment, placed, processing, shipped, delivered, pre_ordered, cancelled]
+    Order:
+      type: object
+      required: [order_id, platform_id, status, total, currency, platform_order_ids]
+      properties:
+        order_id: { type: string, format: uuid }
+        platform_id: { type: string }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        reconciling:
+          type: boolean
+          description: True after a placeOrder timeout, until getOrder settles it.
+        total: { $ref: "#/components/schemas/Money" }
+        currency: { $ref: "#/components/schemas/Currency" }
+        platform_order_ids:
+          type: array
+          description: One checkout can split into several platform orders by seller.
+          items: { type: string }
+        created_at: { $ref: "#/components/schemas/Timestamp" }
+        updated_at: { $ref: "#/components/schemas/Timestamp" }
+    Payment:
+      type: object
+      required: [payment_id, order_id, status]
+      properties:
+        payment_id: { type: string, format: uuid }
+        order_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [pending, processing, succeeded, failed, failed_final]
+        attempts: { type: integer, minimum: 0, maximum: 3 }
+        refund:
+          type: object
+          properties:
+            refund_ref: { type: string }
+            status: { type: string, enum: [initiated, completed, failed] }
+    Event:
+      type: object
+      required: [seq, event_id, event_type, payload, occurred_at]
+      properties:
+        seq: { type: integer, description: Per-agent sequence number }
+        event_id: { type: string, format: uuid }
+        event_type: { type: string, example: OrderPlaced }
+        payload: { type: object, additionalProperties: true }
+        occurred_at: { $ref: "#/components/schemas/Timestamp" }
