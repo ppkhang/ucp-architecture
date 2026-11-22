@@ -358,3 +358,13 @@ def test_reset_restores_seed_state(shop):
     paid(shop)
     shop.post("/_admin/reset")
     assert shop.platform.orders == {} and shop.get("/products/p_mug").json()["variants"][0]["available"] == 50
+
+
+def test_same_variant_twice_cannot_oversell(shop):
+    items = [{"variant_id": "v_lamp", "quantity": 1}] * 2  # only 1 lamp in stock
+    r = shop.post("/checkouts", json={"items": items}, headers=auth(login(shop)))
+    assert r.status_code == 409
+
+
+def test_admin_config_hides_webhook_secret(shop):
+    assert "webhook_secret" not in shop.get("/_admin/config").json()

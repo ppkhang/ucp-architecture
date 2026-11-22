@@ -224,6 +224,10 @@ class Platform:
     def _price_lines(self, items: list[dict[str, Any]], region: str) -> tuple[list[dict], int, int]:
         if not items:
             raise PlatformError(422, "INVALID_REQUEST", "items must not be empty")
+        merged: dict[str, int] = {}
+        for it in items:  # same variant on two lines must be checked as one total
+            merged[it["variant_id"]] = merged.get(it["variant_id"], 0) + it["quantity"]
+        items = [{"variant_id": k, "quantity": q} for k, q in merged.items()]
         lines, subtotal = [], 0
         for it in items:
             v = self.variants.get(it["variant_id"])
@@ -255,7 +259,7 @@ class Platform:
                 raise PlatformError(409, "OUT_OF_STOCK", f"{ln['variant_id']}: only {ln['available']} left")
         co = Checkout(
             id="co_" + uuid.uuid4().hex[:12], user=user,
-            items=[{"variant_id": i["variant_id"], "quantity": i["quantity"]} for i in items],
+            items=[{"variant_id": ln["variant_id"], "quantity": ln["quantity"]} for ln in lines],
             region=region, address_id=address_id,
             subtotal=subtotal, shipping_fee=fee, total=subtotal + fee,
         )
