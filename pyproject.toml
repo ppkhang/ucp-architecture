@@ -6,6 +6,10 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "pydantic-settings>=2.4",
+    "psycopg[binary]>=3.2",  # Postgres driver
+    "pyjwt>=2.9",  # 5 minute agent JWT
+    "cryptography>=43",  # Fernet for platform tokens at rest (hard rule 12)
+    "httpx>=0.27",  # calls to the platform OAuth endpoints
 ]
 
 [project.optional-dependencies]
