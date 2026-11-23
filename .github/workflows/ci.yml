@@ -1,11 +1,22 @@
 name: ci
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ucp
+          POSTGRES_PASSWORD: ucp
+          POSTGRES_DB: ucp
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U ucp" --health-interval 2s --health-timeout 5s --health-retries 15
+    env:
+      DATABASE_URL: postgresql://ucp:ucp@127.0.0.1:5432/ucp
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
