@@ -54,7 +54,8 @@ Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bư�
 | 1 | Khung repo, Docker Compose (Postgres, Redis), `/health`, CI | Xong |
 | 2 | [`specs/openapi.yaml`](specs/openapi.yaml), enum 23 mã lỗi | Xong |
 | 3 | Mock platform (OAuth, hold, đơn hàng, webhook có chữ ký) | Xong |
-| 4 đến 11 | Identity, Catalog, Trade, Idempotency và outbox, Notification, Cancel, MCP server, deploy | Chưa làm |
+| 4 | Identity: đăng ký agent, API key, `/v1/auth/token` (JWT 5 phút), UserLink qua OAuth của shop giả | Xong |
+| 5 đến 11 | Catalog, Trade, Idempotency và outbox, Notification, Cancel, MCP server, deploy | Chưa làm |
 
 Chạy thử:
 
