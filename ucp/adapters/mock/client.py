@@ -73,6 +73,12 @@ class MockPlatformAdapter:
     def place_order(self, token: str, checkout_id: str, idempotency_key: str) -> dict[str, Any]:
         return self._call("POST", "/orders", token=token, json={"checkout_id": checkout_id}, key=idempotency_key)
 
+    def get_order(self, token: str, platform_order_id: str) -> dict[str, Any]:
+        return self._call("GET", f"/orders/{platform_order_id}", token=token)
+
+    def release_hold(self, token: str, platform_checkout_id: str) -> None:
+        self._call("POST", f"/checkouts/{platform_checkout_id}/release", token=token)
+
     def get_order_by_key(self, token: str, idempotency_key: str) -> dict[str, Any] | None:
         try:
             return self._call("GET", "/orders", token=token, params={"idempotency_key": idempotency_key})

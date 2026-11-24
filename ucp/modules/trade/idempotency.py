@@ -14,8 +14,10 @@ def run(agent_id: str, key: str, body: dict, fn: Callable[[], dict]) -> dict:
     because order placing is idempotent at the platform through the forwarded key."""
     digest = hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     with connect() as conn:
-        conn.execute("DELETE FROM trade.idempotency WHERE agent_id = %s AND key = %s "
-                     "AND created_at < now() - interval '24 hours'", (agent_id, key))
+        # forget a key after 24 h, and a request that never finished (crash) after 2 minutes
+        conn.execute("DELETE FROM trade.idempotency WHERE agent_id = %s AND key = %s AND (created_at < now() - "
+                     "interval '24 hours' OR (response IS NULL AND created_at < now() - interval '2 minutes'))",
+                     (agent_id, key))
         mine = conn.execute("INSERT INTO trade.idempotency (agent_id, key, request_hash) VALUES (%s, %s, %s) "
                             "ON CONFLICT DO NOTHING RETURNING 1", (agent_id, key, digest)).fetchone()
         old = None if mine else conn.execute(
@@ -25,7 +27,6 @@ def run(agent_id: str, key: str, body: dict, fn: Callable[[], dict]) -> dict:
         if old["request_hash"] != digest:
             raise UCPError(ErrorCode.IDEMPOTENCY_CONFLICT, "this Idempotency-Key was used with a different request")
         if old["response"] is None:
-            # shortcut: a crash mid-request leaves the key stuck for 24 h; add a stale-row timeout with the sync worker
             raise UCPError(ErrorCode.IDEMPOTENCY_CONFLICT, "a request with this Idempotency-Key is still running")
         return old["response"]
     try:
