@@ -41,12 +41,14 @@ def expire_checkouts(http: httpx.Client) -> int:
 
 
 def _claim(sql_where: str, min_age: int) -> list[dict]:
-    """Take orders for this worker and mark them touched, so other instances skip them for `min_age` seconds."""
+    """Take orders for this worker and mark them polled, so other instances skip them for `min_age` seconds.
+
+    Only synced_at moves: updated_at is the order's own change time and agents read it."""
     with connect() as conn:
         return conn.execute(
-            "UPDATE trade.orders o SET updated_at = now() FROM trade.checkouts c WHERE o.checkout_id = c.id AND o.id IN ("
-            f"SELECT id FROM trade.orders WHERE {sql_where} AND updated_at < now() - make_interval(secs => %s) "
-            "ORDER BY updated_at LIMIT 50 FOR UPDATE SKIP LOCKED) "
+            "UPDATE trade.orders o SET synced_at = now() FROM trade.checkouts c WHERE o.checkout_id = c.id AND o.id IN ("
+            f"SELECT id FROM trade.orders WHERE {sql_where} AND coalesce(synced_at, updated_at) < now() - make_interval(secs => %s) "
+            "ORDER BY coalesce(synced_at, updated_at) LIMIT 50 FOR UPDATE SKIP LOCKED) "
             "RETURNING o.id, o.agent_id, o.platform_id, o.link_id, o.idempotency_key, o.platform_order_id, "
             "o.status, o.payment_status, o.reconciling, c.platform_checkout_id", (min_age,)).fetchall()
 

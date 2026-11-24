@@ -79,3 +79,4 @@ CREATE INDEX IF NOT EXISTS outbox_pending ON trade.outbox (seq) WHERE delivered_
 
 -- CREATE TABLE IF NOT EXISTS never adds columns to a table from an older step, so changes go here.
 ALTER TABLE trade.checkouts ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'open';
+ALTER TABLE trade.orders ADD COLUMN IF NOT EXISTS synced_at timestamptz; -- worker poll marker, so updated_at only moves on real changes

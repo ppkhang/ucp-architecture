@@ -151,15 +151,21 @@ def _refresh(link_id: str, http: httpx.Client) -> None:
                 "client_id": s.mock_client_id, "client_secret": s.mock_client_secret})
         except httpx.HTTPError:
             raise UCPError(ErrorCode.PLATFORM_UNAVAILABLE, "platform did not answer") from None
+        try:
+            reason = r.json()["error"]["code"]
+        except (ValueError, KeyError, TypeError):
+            reason = None
         if r.status_code == 200:
             t = r.json()
             conn.execute("UPDATE identity.platform_tokens SET access_token = %s, refresh_token = %s, "
                          "expires_at = now() + make_interval(secs => %s) WHERE link_id = %s",
                          (f.encrypt(t["access_token"].encode()), f.encrypt(t["refresh_token"].encode()),
                           t["expires_in"], link_id))
-        elif r.status_code in (400, 401):  # the platform refused the refresh token: the user must link again
+        elif reason == "INVALID_GRANT":  # only a dead refresh token means the user must link again
             conn.execute("UPDATE identity.user_links SET status = 'expired' WHERE id = %s", (link_id,))
             dead = True
+        elif reason == "INVALID_CLIENT":  # our own credentials are wrong: a config error, never the user's link
+            raise UCPError(ErrorCode.INTERNAL_ERROR, "the platform rejected UCP's client credentials")
         else:
             raise UCPError(ErrorCode.PLATFORM_UNAVAILABLE, f"platform answered {r.status_code}")
     if dead:

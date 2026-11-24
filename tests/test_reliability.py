@@ -6,6 +6,7 @@ from tests.conftest import agent, link
 from tests.test_trade import checkout, code, confirm_order, intent, pay, setup, user_confirms
 from ucp import outbox
 from ucp.api.main import app
+from ucp.common.config import get_settings
 from ucp.common.db import connect
 from ucp.modules.trade import workers
 from ucp.workers.loop import run_once
@@ -107,8 +108,10 @@ def test_sync_walks_several_missed_steps_and_never_goes_back(ucp):
     assert ucp.get(f"/v1/orders/{order['order_id']}", headers=auth).json()["status"] == "shipped"
     assert [e["payload"]["status"] for e in rows("SELECT payload FROM trade.outbox ORDER BY seq")] == [
         "placed", "processing", "shipped"]
+    before = rows("SELECT updated_at FROM trade.orders")[0]["updated_at"]
     assert workers.sync_orders(app.state.platform_http, min_age=0) == 1  # polled again, nothing new
     assert len(rows("SELECT 1 FROM trade.outbox")) == 3
+    assert rows("SELECT updated_at FROM trade.orders")[0]["updated_at"] == before  # a poll is not a change
 
 
 def test_sync_worker_settles_a_reconciling_order_into_one_shop_order(ucp):
@@ -157,6 +160,16 @@ def test_refused_refresh_token_expires_the_link(ucp):
     link(ucp, agent_id, auth)  # linking again fixes it
     assert intent(ucp, auth, "k3", "create_checkout",
                   {"platform_id": "mock", "items": [{"product_id": "p_mug", "qty": 1}]}).status_code == 200
+
+
+def test_wrong_client_secret_does_not_kill_the_users_link(ucp, monkeypatch):
+    _, auth = setup(ucp)
+    with connect() as conn:
+        conn.execute("UPDATE identity.platform_tokens SET expires_at = now() - interval '1 minute'")
+    monkeypatch.setattr(get_settings(), "mock_client_secret", "wrong")  # our own config error
+    r = intent(ucp, auth, "k", "create_checkout", {"platform_id": "mock", "items": [{"product_id": "p_mug", "qty": 1}]})
+    assert code(r) == "UCP_INTERNAL_ERROR"
+    assert rows("SELECT status FROM identity.user_links")[0]["status"] == "active"
 
 
 def test_stuck_idempotency_row_is_retried_after_two_minutes(ucp):
