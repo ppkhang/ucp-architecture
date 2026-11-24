@@ -47,6 +47,8 @@ v1.1 là thiết kế sau bảo vệ, không thuộc báo cáo đã nộp. Đang
 
 ## Hiện thực v1.1 (đang xây)
 
+> **Đang xây, chưa dùng được thật.** Bước 1 đến 7 xong, bước 8 đến 11 chưa làm. Chỉ chạy với sàn giả (`mock_platform/`), chưa có sàn thật, chưa có MCP server nên chưa nối được với Claude.
+
 Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bước). Python 3.12, FastAPI, modular monolith.
 
 | Bước | Nội dung | Trạng thái |
@@ -63,12 +65,18 @@ Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bư�
 Chạy thử:
 
 ```bash
+cp .env.example deploy/.env   # rồi đặt POSTGRES_PASSWORD, MOCK_WEBHOOK_SECRET, JWT_SECRET, TOKEN_KEY
+python -c "import secrets;print(secrets.token_urlsafe(48))"                                 # giá trị cho JWT_SECRET
+python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"    # giá trị cho TOKEN_KEY
+
 docker compose -f deploy/docker-compose.yml up -d --build   # api :8000, mock platform :9000
 curl localhost:8000/health
 
 pip install -e ".[dev]"
-pytest
+pytest   # cần Postgres chạy (docker compose up -d postgres)
 ```
+
+Compose không khởi động nếu thiếu `JWT_SECRET` hoặc `TOKEN_KEY`: hai khóa này không có giá trị mặc định công khai nữa. Chạy ngoài compose mà không đặt thì mỗi lần khởi động tự sinh khóa mới, nên token và tài khoản đã liên kết mất hiệu lực sau mỗi lần chạy lại. Luồng liên kết tài khoản chưa chạy được bên trong compose (api cần tách địa chỉ nội bộ và địa chỉ công khai của sàn giả); toàn bộ luồng mua hàng đã chạy đủ bằng `pytest` và uvicorn.
 
 Cấu trúc: `ucp/` (API), `mock_platform/` (sàn giả), `specs/openapi.yaml` (hợp đồng API), `deploy/` (compose), `tests/`.
 
