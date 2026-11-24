@@ -1,6 +1,7 @@
 """Step 7: outbox, ExpiryWorker, OrderSyncWorker, token refresh, idempotency of stuck requests."""
 import httpx
 import pytest
+from cryptography.fernet import Fernet
 
 from tests.conftest import agent, link
 from tests.test_trade import checkout, code, confirm_order, intent, pay, setup, user_confirms
@@ -160,6 +161,18 @@ def test_refused_refresh_token_expires_the_link(ucp):
     link(ucp, agent_id, auth)  # linking again fixes it
     assert intent(ucp, auth, "k3", "create_checkout",
                   {"platform_id": "mock", "items": [{"product_id": "p_mug", "qty": 1}]}).status_code == 200
+
+
+@pytest.mark.parametrize("token_expired", [False, True])  # read the access token / the refresh token
+def test_unreadable_platform_token_is_link_expired_not_500(ucp, monkeypatch, token_expired):
+    agent_id, auth = setup(ucp)
+    if token_expired:
+        with connect() as conn:
+            conn.execute("UPDATE identity.platform_tokens SET expires_at = now() - interval '1 minute'")
+    monkeypatch.setattr(get_settings(), "token_key", Fernet.generate_key().decode())  # TOKEN_KEY changed
+    r = intent(ucp, auth, "k", "create_checkout", {"platform_id": "mock", "items": [{"product_id": "p_mug", "qty": 1}]})
+    assert (r.status_code, code(r)) == (403, "UCP_LINK_EXPIRED")
+    assert rows("SELECT status FROM identity.user_links")[0]["status"] == "active"  # fixing the key brings it back
 
 
 def test_wrong_client_secret_does_not_kill_the_users_link(ucp, monkeypatch):

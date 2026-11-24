@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-25: Bỏ khóa bí mật mặc định công khai (rà soát bảo mật 2026-11-24)
+
+### Sửa
+- `ucp.common.config`: `jwt_secret` và `token_key` không còn giá trị mặc định ghi trong repo. Không đặt thì mỗi tiến trình tự sinh khóa ngẫu nhiên (chỉ dùng khi dev). Giá trị rỗng, `change-me` hoặc giá trị mặc định cũ bị từ chối khi khởi động, và lỗi không in lại giá trị (quy tắc cứng 13). Trước đây ai cũng ký được token xác nhận của người dùng (vi phạm ADR-007, quy tắc cứng 2) và giải mã được token sàn đã lưu (quy tắc cứng 12).
+- `deploy/docker-compose.yml`: service `api` bắt buộc có `JWT_SECRET` và `TOKEN_KEY` trong `.env`.
+- `identity`: token có claim `purpose` (token trang xác nhận) không dùng làm phiên agent được. Token sàn không giải mã được (đổi `TOKEN_KEY`) trả `UCP_LINK_EXPIRED` thay vì lỗi 500, và liên kết không bị đánh dấu hết hạn.
+- `trade`: gửi xác nhận không khớp checkout (đề xuất đã đổi) trả `UCP_FORBIDDEN` thay vì báo "Confirmed" mà không ghi gì. Gửi lại cùng một xác nhận vẫn trả 200.
+
+Không đổi ADR, hợp đồng API hay quy tắc cứng.
+
 ## 2026-11-22: Sửa lỗi sàn giả và cấu hình compose sau rà soát
 
 ### Sửa

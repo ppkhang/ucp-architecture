@@ -1,10 +1,13 @@
 """Step 4: identity against a real Postgres and the mock shop's OAuth."""
 from datetime import UTC, datetime, timedelta
 import jwt
+import pytest
+from cryptography.fernet import Fernet
+from pydantic import ValidationError
 
 from tests.conftest import agent, link, perms  # noqa: F401  (ucp is a fixture from conftest)
 from ucp.api.main import app
-from ucp.common.config import get_settings
+from ucp.common.config import Settings, get_settings
 from ucp.common.db import connect
 
 
@@ -38,6 +41,43 @@ def test_forged_token_refused(ucp):
     forged = jwt.encode({"sub": agent_id, "exp": datetime.now(UTC) + timedelta(minutes=5)}, "x" * 32, algorithm="HS256")
     r = ucp.get(f"/v1/agents/{agent_id}/permissions", headers={"Authorization": f"Bearer {forged}"})
     assert r.json()["error"]["code"] == "UCP_UNAUTHORIZED"
+
+
+PUBLISHED = ["", "   ", "change-me", "dev-only-jwt-secret-change-me-32bytes", "ZGV2LW9ubHktZmVybmV0LWtleS1jaGFuZ2UtbWUhISE="]
+
+
+@pytest.mark.parametrize("field", ["jwt_secret", "token_key"])
+@pytest.mark.parametrize("value", PUBLISHED)
+def test_blank_or_published_secret_refused_without_echoing_it(field, value):
+    with pytest.raises(ValidationError) as e:
+        Settings(_env_file=None, **{field: value})
+    if value.strip():
+        assert value not in str(e.value)  # hard rule 13: the secret stays out of startup logs
+
+
+def test_token_key_must_be_a_fernet_key():
+    with pytest.raises(ValidationError) as e:
+        Settings(_env_file=None, token_key="any-private-string")
+    assert "any-private-string" not in str(e.value)
+
+
+def test_private_secrets_accepted_and_unset_is_random(monkeypatch):
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+    monkeypatch.delenv("TOKEN_KEY", raising=False)
+    key = Fernet.generate_key().decode()
+    s = Settings(_env_file=None, jwt_secret="s3cret-private", token_key=key)
+    assert (s.jwt_secret, s.token_key) == ("s3cret-private", key)
+    a, b = Settings(_env_file=None), Settings(_env_file=None)
+    assert a.jwt_secret != b.jwt_secret and a.token_key != b.token_key
+    Fernet(a.token_key)  # a usable Fernet key
+
+
+def test_confirmation_token_is_not_an_agent_session(ucp):
+    agent_id, _, _ = agent(ucp)
+    confirm = jwt.encode({"sub": agent_id, "purpose": "confirm", "exp": datetime.now(UTC) + timedelta(minutes=5)},
+                         get_settings().jwt_secret, algorithm="HS256")
+    r = ucp.get(f"/v1/agents/{agent_id}/permissions", headers={"Authorization": f"Bearer {confirm}"})
+    assert (r.status_code, r.json()["error"]["code"]) == (401, "UCP_UNAUTHORIZED")
 
 
 def test_other_agents_path_forbidden(ucp):
