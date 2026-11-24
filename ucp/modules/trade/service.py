@@ -190,10 +190,14 @@ def record_confirmation(checkout_id: str, token: str) -> str:
     if co["expired"]:
         raise UCPError(ErrorCode.CHECKOUT_EXPIRED, "this checkout has expired")
     with connect() as conn:
-        # bound to the proposal hash and the linked user; first confirmation wins
-        conn.execute("UPDATE trade.checkouts SET confirmed_at = now(), confirmed_hash = %s, confirmed_user = %s "
-                     "WHERE id = %s AND confirmed_at IS NULL AND proposal_hash = %s AND platform_user = %s",
-                     (c["h"], c["user"], checkout_id, c["h"], c["user"]))
+        # bound to the proposal hash and the linked user; first confirmation wins, a resubmit of it is a no-op
+        row = conn.execute(
+            "UPDATE trade.checkouts SET confirmed_at = coalesce(confirmed_at, now()), confirmed_hash = %s, "
+            "confirmed_user = %s WHERE id = %s AND proposal_hash = %s AND platform_user = %s "
+            "AND (confirmed_at IS NULL OR (confirmed_hash = %s AND confirmed_user = %s)) RETURNING id",
+            (c["h"], c["user"], checkout_id, c["h"], c["user"], c["h"], c["user"])).fetchone()
+    if not row:
+        raise UCPError(ErrorCode.FORBIDDEN, "the order changed since you logged in, open the link again")
     return page("Confirmed", "<p>Your order is confirmed. Go back to your assistant to finish.</p>")
 
 

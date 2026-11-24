@@ -108,6 +108,21 @@ def test_confirmation_is_single_use(ucp):
     assert again["order_id"] == first["order_id"] and len(ucp.shop.app.state.platform.orders) == 1
 
 
+def test_stale_confirmation_fails_loudly_and_resubmit_is_harmless(ucp):
+    _, auth = setup(ucp)
+    co = checkout(ucp, auth)
+    token = re.search(r"name=token value='([^']+)'", user_logs_in(ucp, co["checkout_id"]).text).group(1)
+    with connect() as conn:  # the proposal changed after the user logged in
+        conn.execute("UPDATE trade.checkouts SET proposal_hash = 'other' WHERE id = %s", (co["checkout_id"],))
+    r = ucp.post(f"/v1/confirm/{co['checkout_id']}", content=f"token={token}", headers=FORM)
+    assert (r.status_code, code(r)) == (403, "UCP_FORBIDDEN")  # not a silent "Confirmed"
+    assert code(confirm_order(ucp, auth, co["checkout_id"])) == "UCP_CONFIRMATION_REQUIRED"
+    co = checkout(ucp, auth, "co-2")
+    token = re.search(r"name=token value='([^']+)'", user_logs_in(ucp, co["checkout_id"]).text).group(1)
+    for _ in range(2):  # a double submit of the same confirmation still shows "Confirmed"
+        assert ucp.post(f"/v1/confirm/{co['checkout_id']}", content=f"token={token}", headers=FORM).status_code == 200
+
+
 def test_other_agent_cannot_use_a_checkout(ucp):
     _, auth = setup(ucp)
     co = checkout(ucp, auth)

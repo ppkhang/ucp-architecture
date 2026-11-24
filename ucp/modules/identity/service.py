@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 import httpx
 import jwt
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 from ucp.adapters import PLATFORMS
 from ucp.common.config import get_settings
@@ -64,6 +64,8 @@ def authenticate(authorization: str | None) -> str:
         raise UCPError(ErrorCode.SESSION_EXPIRED, "token expired") from None
     except jwt.InvalidTokenError:
         raise UCPError(ErrorCode.UNAUTHORIZED, "invalid token") from None
+    if "purpose" in claims:  # confirmation-page tokens share the key but are never agent sessions
+        raise UCPError(ErrorCode.UNAUTHORIZED, "invalid token")
     # shortcut: session check reads Postgres each call instead of a Redis session; move to Redis with the gateway
     with connect() as conn:
         agent = conn.execute("SELECT status FROM identity.agents WHERE id = %s", (claims["sub"],)).fetchone()
@@ -124,6 +126,15 @@ def finish_link(state: str, code: str, http: httpx.Client) -> str:
     return str(link["id"])
 
 
+def _decrypt(token: bytes) -> str:
+    """Stored platform tokens unreadable with the current TOKEN_KEY (key changed or unset after a restart) mean the
+    user must link again. The link is not marked expired: fixing the key brings every link back."""
+    try:
+        return Fernet(get_settings().token_key).decrypt(bytes(token)).decode()
+    except InvalidToken:
+        raise UCPError(ErrorCode.LINK_EXPIRED, "the stored platform token cannot be read, link the account again") from None
+
+
 def _select_link(agent_id: str, platform_id: str | None, link_id: str | None) -> dict | None:
     with connect() as conn:
         return conn.execute(
@@ -145,9 +156,10 @@ def _refresh(link_id: str, http: httpx.Client) -> None:
                            "WHERE link_id = %s FOR UPDATE", (link_id,)).fetchone()
         if not row or not row["expired"]:
             return  # gone, or another request refreshed while we waited for the lock
+        refresh_token = _decrypt(row["refresh_token"])
         try:
             r = http.post(f"{s.mock_base_url}/oauth/token", timeout=5, data={
-                "grant_type": "refresh_token", "refresh_token": f.decrypt(bytes(row["refresh_token"])).decode(),
+                "grant_type": "refresh_token", "refresh_token": refresh_token,
                 "client_id": s.mock_client_id, "client_secret": s.mock_client_secret})
         except httpx.HTTPError:
             raise UCPError(ErrorCode.PLATFORM_UNAVAILABLE, "platform did not answer") from None
@@ -191,7 +203,7 @@ def get_link(agent_id: str, platform_id: str | None = None, link_id: str | None 
         if not row or row["token_expired"]:
             raise UCPError(ErrorCode.LINK_EXPIRED, "platform token expired")
     return {"link_id": str(row["id"]), "platform_user": row["platform_user"],
-            "access_token": Fernet(get_settings().token_key).decrypt(bytes(row["access_token"])).decode()}
+            "access_token": _decrypt(row["access_token"])}
 
 
 def unlink(agent_id: str, link_id: str) -> None:
