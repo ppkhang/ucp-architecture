@@ -9,13 +9,13 @@ import httpx
 import jwt
 from cryptography.fernet import Fernet
 
+from ucp.adapters import PLATFORMS
 from ucp.common.config import get_settings
 from ucp.common.db import connect
 from ucp.common.errors import ErrorCode, UCPError
 
 TOKEN_TTL = 300  # hard rule 11: JWT lives 5 minutes
 LINK_TTL = 600
-PLATFORMS = {"mock"}  # shortcut: only the mock shop is linkable; read from a platform registry once there are more
 LINKED_SCOPES = ["view_order", "create_order", "cancel_order"]
 
 
@@ -75,7 +75,7 @@ def authenticate(authorization: str | None) -> str:
 
 
 def start_link(agent_id: str, platform_id: str) -> dict:
-    if platform_id not in PLATFORMS:
+    if platform_id not in PLATFORMS:  # shared registry with the catalog
         raise UCPError(ErrorCode.NOT_FOUND, f"unknown platform {platform_id}")
     s = get_settings()
     link_id, state = uuid.uuid4(), secrets.token_urlsafe(24)
