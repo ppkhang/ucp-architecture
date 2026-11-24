@@ -56,7 +56,8 @@ Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bư�
 | 3 | Mock platform (OAuth, hold, đơn hàng, webhook có chữ ký) | Xong |
 | 4 | Identity: đăng ký agent, API key, `/v1/auth/token` (JWT 5 phút), UserLink qua OAuth của shop giả | Xong |
 | 5 | Catalog: tìm kiếm, chi tiết, giá, tồn kho qua adapter của shop giả (UC-01) | Xong |
-| 6 đến 11 | Trade, Idempotency và outbox, Notification, Cancel, MCP server, deploy | Chưa làm |
+| 6 | Trade: tạo checkout, trang xác nhận của user, `confirm_order`, webhook, đơn `placed` (lát cắt đầu tiên từ đầu đến cuối) | Xong |
+| 7 đến 11 | Idempotency đầy đủ và outbox, Notification, Cancel, MCP server, deploy | Chưa làm |
 
 Chạy thử:
 

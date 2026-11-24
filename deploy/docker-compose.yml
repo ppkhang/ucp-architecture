@@ -29,6 +29,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-ucp}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-ucp}
       REDIS_URL: redis://redis:6379/0
+      MOCK_WEBHOOK_SECRET: ${MOCK_WEBHOOK_SECRET:?set MOCK_WEBHOOK_SECRET in .env}
     ports:
       - "8000:8000"
     healthcheck:
@@ -48,7 +49,7 @@ services:
     environment:
       MOCK_MODE: ${MOCK_MODE:-always_succeed}
       MOCK_BASE_URL: ${MOCK_BASE_URL:-http://localhost:9000}
-      MOCK_WEBHOOK_URL: ${MOCK_WEBHOOK_URL:-}
+      MOCK_WEBHOOK_URL: ${MOCK_WEBHOOK_URL:-http://api:8000/v1/platform-events/mock}
       MOCK_WEBHOOK_SECRET: ${MOCK_WEBHOOK_SECRET:?set MOCK_WEBHOOK_SECRET in .env}
     ports:
       - "127.0.0.1:9000:9000"

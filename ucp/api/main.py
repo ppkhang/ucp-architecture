@@ -8,7 +8,9 @@ from fastapi.responses import JSONResponse
 from ucp.common.db import apply_schemas
 from ucp.common.errors import ErrorCode, UCPError
 from ucp.modules.catalog.router import router as catalog_router
+from ucp.api.oauth import router as oauth_router
 from ucp.modules.identity.router import router as identity_router
+from ucp.modules.trade.router import router as trade_router
 
 
 @asynccontextmanager
@@ -22,6 +24,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="UCP", version="0.1.0", lifespan=lifespan)
 app.include_router(identity_router)
 app.include_router(catalog_router)
+app.include_router(trade_router)
+app.include_router(oauth_router)
 
 
 @app.exception_handler(UCPError)
