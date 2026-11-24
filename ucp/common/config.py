@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     mock_base_url: str = "http://localhost:9000"
     mock_client_id: str = "ucp"
     mock_client_secret: str = "ucp-mock-secret"
+    mock_webhook_secret: str = "mock-webhook-secret"  # same default as the mock shop
+    checkout_ttl_seconds: int = 1800  # 30 minutes, v1.0 BR-14 (addendum B6)
 
 
 @lru_cache
