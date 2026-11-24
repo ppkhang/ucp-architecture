@@ -4,6 +4,7 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, Depends, Header, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from ucp.common.errors import ErrorCode, UCPError
 from ucp.modules.identity.router import current_agent
@@ -43,7 +44,7 @@ def confirm_page(checkout_id: uuid.UUID) -> RedirectResponse:
 @router.post("/confirm/{checkout_id}", response_class=HTMLResponse)
 async def confirm_submit(checkout_id: uuid.UUID, request: Request) -> str:
     form = parse_qs((await request.body()).decode())
-    return service.record_confirmation(str(checkout_id), form.get("token", [""])[0])
+    return await run_in_threadpool(service.record_confirmation, str(checkout_id), form.get("token", [""])[0])
 
 
 @router.get("/orders/{order_id}")
@@ -53,5 +54,5 @@ def get_order(order_id: uuid.UUID, agent_id: str = Depends(current_agent)) -> di
 
 @router.post("/platform-events/{platform_id}", status_code=202)
 async def platform_event(platform_id: str, request: Request) -> Response:
-    service.receive_event(platform_id, request.headers, await request.body())
+    await run_in_threadpool(service.receive_event, platform_id, request.headers, await request.body())  # blocking DB
     return Response(status_code=202)
