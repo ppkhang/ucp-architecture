@@ -2,7 +2,7 @@
 import httpx
 
 from ucp.api.main import app
-from tests.test_identity import agent, ucp  # noqa: F401  (ucp is a fixture)
+from tests.conftest import agent  # noqa: F401  (ucp is a fixture from conftest)
 
 
 def get(c, path, auth, **params):

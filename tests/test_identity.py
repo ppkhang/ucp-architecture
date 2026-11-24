@@ -1,52 +1,11 @@
 """Step 4: identity against a real Postgres and the mock shop's OAuth."""
 from datetime import UTC, datetime, timedelta
-from urllib.parse import parse_qs, urlparse
-
 import jwt
-import pytest
-from fastapi.testclient import TestClient
 
-from mock_platform.main import create_app as create_shop
-from mock_platform.store import Config
+from tests.conftest import agent, link, perms  # noqa: F401  (ucp is a fixture from conftest)
 from ucp.api.main import app
 from ucp.common.config import get_settings
 from ucp.common.db import connect
-
-
-@pytest.fixture
-def ucp():
-    app.state.platform_http = TestClient(create_shop(Config(webhook_secret="s")))
-    with TestClient(app) as c:  # runs lifespan: applies schemas
-        with connect() as conn:
-            conn.execute("TRUNCATE identity.platform_tokens, identity.user_links, identity.agents")
-        yield c
-
-
-def agent(c) -> tuple[str, str, dict]:
-    r = c.post("/v1/agents", json={"name": "bot"})
-    assert r.status_code == 201
-    a = r.json()
-    t = c.post("/v1/auth/token", json={"grant_type": "api_key"}, headers={"X-API-Key": a["api_key"]})
-    assert t.status_code == 200
-    return a["agent_id"], a["api_key"], {"Authorization": f"Bearer {t.json()['token']}"}
-
-
-def link(c, agent_id, auth) -> str:
-    r = c.post(f"/v1/agents/{agent_id}/links", json={"platform_id": "mock"}, headers=auth)
-    assert r.status_code == 201
-    q = parse_qs(urlparse(r.json()["auth_url"]).query)
-    shop = app.state.platform_http
-    login = shop.post("/oauth/authorize", data={"client_id": q["client_id"][0], "redirect_uri": q["redirect_uri"][0],
-                                                "state": q["state"][0], "username": "khang", "password": "khang123"},
-                      follow_redirects=False)
-    back = parse_qs(urlparse(login.headers["location"]).query)
-    cb = c.get("/oauth/callback", params={"code": back["code"][0], "state": back["state"][0]})
-    assert cb.status_code == 200
-    return r.json()["link_id"], back
-
-
-def perms(c, agent_id, auth):
-    return c.get(f"/v1/agents/{agent_id}/permissions", headers=auth).json()["permissions"]
 
 
 def test_api_key_gives_read_catalog_only(ucp):

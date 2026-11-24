@@ -1,7 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Header, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, Header, Response
 from pydantic import BaseModel, Field
 
 from ucp.common.errors import ErrorCode, UCPError
@@ -57,9 +56,3 @@ def create_link(body: LinkIn, me: str = Depends(own_agent)) -> dict:
 def delete_link(link_id: uuid.UUID, me: str = Depends(own_agent)) -> Response:
     service.unlink(me, str(link_id))
     return Response(status_code=204)
-
-
-@router.get("/oauth/callback", response_class=HTMLResponse)
-def oauth_callback(request: Request, code: str = "", state: str = "") -> str:
-    service.finish_link(state, code, request.app.state.platform_http)
-    return "<p>Your account is linked. You can close this page.</p>"
