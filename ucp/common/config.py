@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     def _secret_not_public(cls, v: str, info: ValidationInfo) -> str:
         if v.strip() in PUBLIC_SECRETS:
             raise ValueError(f"{info.field_name.upper()} is blank or a published value; generate one (see .env.example)")
+        if info.field_name == "token_key":
+            Fernet(v)  # not a Fernet key: refuse at startup instead of a 500 on the first link
         return v
 
 

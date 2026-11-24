@@ -55,6 +55,12 @@ def test_blank_or_published_secret_refused_without_echoing_it(field, value):
         assert value not in str(e.value)  # hard rule 13: the secret stays out of startup logs
 
 
+def test_token_key_must_be_a_fernet_key():
+    with pytest.raises(ValidationError) as e:
+        Settings(_env_file=None, token_key="any-private-string")
+    assert "any-private-string" not in str(e.value)
+
+
 def test_private_secrets_accepted_and_unset_is_random(monkeypatch):
     monkeypatch.delenv("JWT_SECRET", raising=False)
     monkeypatch.delenv("TOKEN_KEY", raising=False)
