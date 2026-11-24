@@ -28,3 +28,7 @@ CREATE TABLE IF NOT EXISTS identity.platform_tokens (
     refresh_token bytea NOT NULL,
     expires_at    timestamptz NOT NULL
 );
+
+ALTER TABLE identity.user_links DROP CONSTRAINT IF EXISTS user_links_status_check;
+ALTER TABLE identity.user_links ADD CONSTRAINT user_links_status_check
+    CHECK (status IN ('pending', 'active', 'revoked', 'expired'));

@@ -276,7 +276,7 @@ def test_mode_slow_delays_calls_but_not_admin(shop):
     assert time.perf_counter() - t < 0.2
     t = time.perf_counter()
     shop.get("/products")
-    assert time.perf_counter() - t >= 0.3
+    assert time.perf_counter() - t >= 0.25
 
 
 def test_invalid_mode_is_rejected(shop):

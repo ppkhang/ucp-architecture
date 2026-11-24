@@ -118,29 +118,78 @@ def finish_link(state: str, code: str, http: httpx.Client) -> str:
     with connect() as conn:
         conn.execute("UPDATE identity.user_links SET status = 'active', platform_user = %s WHERE id = %s",
                      (platform_user, link["id"]))
-        # shortcut: no refresh/rotation yet (hard rule 12, step 7); LINK_EXPIRED comes with it
         conn.execute("INSERT INTO identity.platform_tokens VALUES (%s, %s, %s, now() + make_interval(secs => %s))",
                      (link["id"], f.encrypt(tokens["access_token"].encode()),
                       f.encrypt(tokens["refresh_token"].encode()), tokens["expires_in"]))
     return str(link["id"])
 
 
-def get_link(agent_id: str, platform_id: str | None = None, link_id: str | None = None) -> dict:
-    """The agent's active link (newest on the platform, or the given one) with the decrypted platform token.
-
-    This is the create_order check: no active link means UCP_NO_USER_LINK. Trade calls it again at
-    confirm_order, so an unlink in between is refused."""
+def _select_link(agent_id: str, platform_id: str | None, link_id: str | None) -> dict | None:
     with connect() as conn:
-        row = conn.execute(
-            "SELECT l.id, l.platform_user, t.access_token, t.expires_at < now() AS token_expired "
+        return conn.execute(
+            "SELECT l.id, l.status, l.platform_user, t.access_token, t.expires_at <= now() AS token_expired "
             "FROM identity.user_links l JOIN identity.platform_tokens t ON t.link_id = l.id "
-            "WHERE l.agent_id = %s AND l.status = 'active' AND (l.platform_id = %s OR %s::text IS NULL) "
-            "AND (l.id = %s OR %s::uuid IS NULL) ORDER BY l.created_at DESC LIMIT 1",
-            (agent_id, platform_id, platform_id, link_id, link_id)).fetchone()
+            "WHERE l.agent_id = %s AND l.status IN ('active', 'expired') "
+            "AND (l.platform_id = %s OR %s::text IS NULL) AND (l.id = %s OR %s::uuid IS NULL) "
+            "ORDER BY l.created_at DESC LIMIT 1", (agent_id, platform_id, platform_id, link_id, link_id)).fetchone()
+
+
+def _refresh(link_id: str, http: httpx.Client) -> None:
+    """Swap the refresh token for new tokens. The shop rotates the refresh token, so both are replaced (rule 12).
+
+    shortcut: the token row stays locked across the platform call so two requests cannot spend the same refresh
+    token; the call has a short timeout. Move to a queue if refreshes get slow."""
+    s, f, dead = get_settings(), Fernet(get_settings().token_key), False
+    with connect() as conn:
+        row = conn.execute("SELECT refresh_token, expires_at <= now() AS expired FROM identity.platform_tokens "
+                           "WHERE link_id = %s FOR UPDATE", (link_id,)).fetchone()
+        if not row or not row["expired"]:
+            return  # gone, or another request refreshed while we waited for the lock
+        try:
+            r = http.post(f"{s.mock_base_url}/oauth/token", timeout=5, data={
+                "grant_type": "refresh_token", "refresh_token": f.decrypt(bytes(row["refresh_token"])).decode(),
+                "client_id": s.mock_client_id, "client_secret": s.mock_client_secret})
+        except httpx.HTTPError:
+            raise UCPError(ErrorCode.PLATFORM_UNAVAILABLE, "platform did not answer") from None
+        try:
+            reason = r.json()["error"]["code"]
+        except (ValueError, KeyError, TypeError):
+            reason = None
+        if r.status_code == 200:
+            t = r.json()
+            conn.execute("UPDATE identity.platform_tokens SET access_token = %s, refresh_token = %s, "
+                         "expires_at = now() + make_interval(secs => %s) WHERE link_id = %s",
+                         (f.encrypt(t["access_token"].encode()), f.encrypt(t["refresh_token"].encode()),
+                          t["expires_in"], link_id))
+        elif reason == "INVALID_GRANT":  # only a dead refresh token means the user must link again
+            conn.execute("UPDATE identity.user_links SET status = 'expired' WHERE id = %s", (link_id,))
+            dead = True
+        elif reason == "INVALID_CLIENT":  # our own credentials are wrong: a config error, never the user's link
+            raise UCPError(ErrorCode.INTERNAL_ERROR, "the platform rejected UCP's client credentials")
+        else:
+            raise UCPError(ErrorCode.PLATFORM_UNAVAILABLE, f"platform answered {r.status_code}")
+    if dead:
+        raise UCPError(ErrorCode.LINK_EXPIRED, "the platform no longer accepts this link, link the account again")
+
+
+def get_link(agent_id: str, platform_id: str | None = None, link_id: str | None = None,
+             http: httpx.Client | None = None) -> dict:
+    """The agent's newest link (on the platform, or the given one) with a usable decrypted platform token.
+
+    This is the create_order check: no link means UCP_NO_USER_LINK. Trade calls it again at confirm_order, so an
+    unlink in between is refused. An access token past its expiry is refreshed first when `http` is given."""
+    row = _select_link(agent_id, platform_id, link_id)
     if not row:
         raise UCPError(ErrorCode.NO_USER_LINK, "link a user account first")
-    if row["token_expired"]:  # shortcut: no refresh until step 7
-        raise UCPError(ErrorCode.LINK_EXPIRED, "platform token expired, link the account again")
+    if row["status"] == "expired":
+        raise UCPError(ErrorCode.LINK_EXPIRED, "the platform no longer accepts this link, link the account again")
+    if row["token_expired"]:
+        if http is None:
+            raise UCPError(ErrorCode.LINK_EXPIRED, "platform token expired")
+        _refresh(str(row["id"]), http)
+        row = _select_link(agent_id, platform_id, str(row["id"]))
+        if not row or row["token_expired"]:
+            raise UCPError(ErrorCode.LINK_EXPIRED, "platform token expired")
     return {"link_id": str(row["id"]), "platform_user": row["platform_user"],
             "access_token": Fernet(get_settings().token_key).decrypt(bytes(row["access_token"])).decode()}
 

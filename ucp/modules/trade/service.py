@@ -8,6 +8,7 @@ import json
 import secrets
 import time
 import uuid
+from collections import deque
 from datetime import UTC, datetime, timedelta
 from html import escape
 from typing import Any
@@ -17,6 +18,7 @@ import httpx
 import jwt
 from pydantic import BaseModel, Field, ValidationError
 
+from ucp import outbox
 from ucp.adapters import get_adapter
 from ucp.adapters.base import PlatformTimeout
 from ucp.common.config import get_settings
@@ -36,6 +38,7 @@ ORDER_TRANSITIONS: dict[str, set[str]] = {
 }
 # The platform said no and no order exists, so the row is dropped instead of left "reconciling".
 REFUSED = {ErrorCode.INSUFFICIENT_STOCK, ErrorCode.CHECKOUT_EXPIRED, ErrorCode.NOT_FOUND, ErrorCode.BAD_REQUEST}
+EVENT_OF = {"placed": "OrderPlaced", "cancelled": "OrderCancelled"}  # other moves are OrderStatusChanged
 CONFIRM_LOGIN_TTL = 600
 WEBHOOK_TOLERANCE = 300
 
@@ -78,7 +81,7 @@ def _hash(obj: Any) -> str:
 def create_checkout(agent_id: str, raw: dict, http: httpx.Client) -> dict:
     p = parse(CreateCheckoutParams, raw)
     adapter = get_adapter(p.platform_id, http)
-    link = identity.get_link(agent_id, platform_id=p.platform_id)  # create_order needs a UserLink
+    link = identity.get_link(agent_id, platform_id=p.platform_id, http=http)  # create_order needs a UserLink
     items, meta = [], {}
     for i in p.items:
         product = adapter.get_product(i.product_id)
@@ -229,7 +232,7 @@ def confirm_order(agent_id: str, idem_key: str, raw: dict, http: httpx.Client) -
     checkout_id = str(p.checkout_id)
     co = _checkout(checkout_id, agent_id)
     # Rechecked on every call: an unlink between checkout and confirm is refused (hard rule 11).
-    link = identity.get_link(agent_id, link_id=str(co["link_id"]))
+    link = identity.get_link(agent_id, link_id=str(co["link_id"]), http=http)
     adapter = get_adapter(co["platform_id"], http)
     order = _order_by_checkout(checkout_id)
     resumed = order is not None
@@ -275,6 +278,40 @@ def get_order(agent_id: str, order_id: str) -> dict:
             "created_at": _iso(o["created_at"]), "updated_at": _iso(o["updated_at"])}
 
 
+# -- the one place an order's cached status changes ---------------------------------
+
+def _path(frm: str, to: str) -> list[str]:
+    """Shortest chain of allowed moves between two statuses: the cache may have missed several."""
+    seen, queue = {frm}, deque([(frm, [])])
+    while queue:
+        cur, path = queue.popleft()
+        for nxt in ORDER_TRANSITIONS.get(cur, ()):
+            if nxt == to:
+                return path + [nxt]
+            if nxt not in seen:
+                seen.add(nxt)
+                queue.append((nxt, path + [nxt]))
+    return []
+
+
+def apply_status(conn: Any, o: dict, new: str | None = None, pay: str | None = None) -> None:
+    """Move a locked order row to the platform's status, only along the transition table, and write the outbox
+    event in the same transaction. The webhook and the sync worker both come through here. `o` is updated in place."""
+    if new and new != o["status"]:
+        for step in _path(o["status"], new):  # empty for a backwards or unknown status: ignored
+            conn.execute("UPDATE trade.orders SET status = %s, updated_at = now() WHERE id = %s", (step, o["id"]))
+            outbox.emit(conn, "trade", EVENT_OF.get(step, "OrderStatusChanged"), o["agent_id"],
+                        {"order_id": str(o["id"]), "platform_id": o["platform_id"], "status": step,
+                         "previous": o["status"]})
+            o["status"] = step
+    if pay and pay != o["payment_status"]:
+        conn.execute("UPDATE trade.orders SET payment_status = %s, updated_at = now() WHERE id = %s", (pay, o["id"]))
+        if pay == "failed":
+            outbox.emit(conn, "trade", "PaymentFailed", o["agent_id"],
+                        {"order_id": str(o["id"]), "platform_id": o["platform_id"]})
+        o["payment_status"] = pay
+
+
 # -- platform webhooks ----------------------------------------------------------
 
 def receive_event(platform_id: str, headers: Any, body: bytes) -> None:
@@ -294,8 +331,9 @@ def receive_event(platform_id: str, headers: Any, body: bytes) -> None:
     except (ValueError, KeyError, TypeError):
         raise UCPError(ErrorCode.BAD_REQUEST, "malformed event") from None
     with connect() as conn:
-        o = conn.execute("SELECT id, status FROM trade.orders WHERE platform_id = %s AND platform_order_id = %s "
-                         "FOR UPDATE", (platform_id, platform_order_id)).fetchone()
+        o = conn.execute("SELECT id, agent_id, platform_id, status, payment_status FROM trade.orders "
+                         "WHERE platform_id = %s AND platform_order_id = %s FOR UPDATE",
+                         (platform_id, platform_order_id)).fetchone()
         if not o:
             return  # not mapped yet: not recorded, so a redelivery still counts; the sync worker (step 7) catches up
         fresh = conn.execute("INSERT INTO trade.platform_events (platform_id, event_id) VALUES (%s, %s) "
@@ -305,8 +343,4 @@ def receive_event(platform_id: str, headers: Any, body: bytes) -> None:
         new = {"order.paid": "placed", "order.cancelled": "cancelled"}.get(etype) or (
             data.get("status") if etype == "order.status_changed" else None)
         pay = {"order.paid": "succeeded", "order.payment_failed": "failed"}.get(etype)
-        if new and new != o["status"] and new in ORDER_TRANSITIONS.get(o["status"], set()):
-            conn.execute("UPDATE trade.orders SET status = %s, updated_at = now() WHERE id = %s", (new, o["id"]))
-        if pay:
-            conn.execute("UPDATE trade.orders SET payment_status = %s, updated_at = now() WHERE id = %s",
-                         (pay, o["id"]))
+        apply_status(conn, o, new, pay)
