@@ -30,6 +30,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-ucp}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-ucp}
       REDIS_URL: redis://redis:6379/0
       MOCK_WEBHOOK_SECRET: ${MOCK_WEBHOOK_SECRET:?set MOCK_WEBHOOK_SECRET in .env}
+      WORKERS_INTERVAL_SECONDS: 5
     ports:
       - "8000:8000"
     healthcheck:

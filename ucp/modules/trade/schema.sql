@@ -62,3 +62,20 @@ CREATE TABLE IF NOT EXISTS trade.platform_events (
     received_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (platform_id, event_id)
 );
+
+-- Transactional outbox (hard rule 9): written in the same transaction as the state change.
+-- agent_id is its own column so the notification context can fan out per agent without reading trade tables.
+CREATE TABLE IF NOT EXISTS trade.outbox (
+    id           uuid PRIMARY KEY, -- consumers dedupe on this
+    seq          bigserial,
+    type         text NOT NULL,
+    agent_id     uuid NOT NULL,
+    payload      jsonb NOT NULL,
+    created_at   timestamptz NOT NULL DEFAULT now(),
+    delivered_at timestamptz,
+    attempts     int NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS outbox_pending ON trade.outbox (seq) WHERE delivered_at IS NULL;
+
+-- CREATE TABLE IF NOT EXISTS never adds columns to a table from an older step, so changes go here.
+ALTER TABLE trade.checkouts ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'open';
