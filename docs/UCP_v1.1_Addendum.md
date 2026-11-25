@@ -148,6 +148,8 @@ Các bước:
 7. Agent gửi `confirm_order` kèm `Idempotency-Key`.
 8. Trade kiểm tra lại UserLink và bản ghi xác nhận, rồi gọi `placeOrder` với cùng khóa idempotency.
 9. Sàn tạo đơn ở trạng thái chờ thanh toán và trả link thanh toán. User trả tiền trên app sàn (OTP, FaceID).
+Sửa đổi 25/11/2026 (ADR-007): bước 7 và 8 chạy ngay khi user bấm đồng ý ở bước 5, rồi user được chuyển sang trang thanh toán. Agent gọi `confirm_order` để lấy kết quả.
+
 10. Sàn gửi webhook "đã thanh toán". Trade cập nhật đơn và phát `OrderPlaced` qua outbox, Notification đẩy đến Agent qua SSE.
 
 Quy tắc:

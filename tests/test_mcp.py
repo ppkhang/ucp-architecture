@@ -23,7 +23,7 @@ from mcp_server.auth import CLAUDE_CALLBACK, allowed_redirect  # noqa: E402
 from mcp_server.server import build_server  # noqa: E402
 from mcp_server.ucp_client import UCPClient  # noqa: E402
 from tests.conftest import link  # noqa: E402
-from tests.test_trade import FORM, pay, user_confirms, user_logs_in  # noqa: E402
+from tests.test_trade import FORM, agree_token, pay, press_agree, user_confirms, user_logs_in  # noqa: E402
 from ucp import outbox  # noqa: E402
 from ucp.common.config import get_settings  # noqa: E402
 
@@ -177,7 +177,10 @@ def acts_during_the_wait(monkeypatch, user_acts):
 
 def test_one_waiting_call_finishes_once_the_user_agrees_and_pays(ucp, claude, monkeypatch, quick_waits):
     co = claude.ok("create_checkout", items=[{"product_id": "p_mug", "qty": 1}])
-    clicked = acts_during_the_wait(monkeypatch, lambda: user_confirms(ucp, co["checkout_id"]))
+    def agree(proposal_id):  # the real button: UCP does the action itself
+        press_agree(ucp, proposal_id, agree_token(ucp, proposal_id)[1])
+
+    clicked = acts_during_the_wait(monkeypatch, lambda: agree(co["checkout_id"]))
     order = claude.ok("confirm_order", checkout_id=co["checkout_id"], wait_for_user=True)
     assert clicked and order["payment_url"] and len(ucp.shop.app.state.platform.orders) == 1
     paid = acts_during_the_wait(monkeypatch, lambda: pay(ucp, order["payment_url"]))
@@ -186,12 +189,7 @@ def test_one_waiting_call_finishes_once_the_user_agrees_and_pays(ucp, claude, mo
     err, _ = claude.error("cancel_order", order_id=order["order_id"])  # first call hands over the link at once
     request_id = err["details"]["confirm_url"].rsplit("/", 1)[1]
 
-    def agree_to_cancel():
-        page = user_logs_in(ucp, request_id)
-        token = re.search(r"name=token value='([^']+)'", page.text).group(1)
-        ucp.post(f"/v1/confirm/{request_id}", content=f"token={token}", headers=FORM)
-
-    agreed = acts_during_the_wait(monkeypatch, agree_to_cancel)
+    agreed = acts_during_the_wait(monkeypatch, lambda: agree(request_id))
     assert claude.ok("cancel_order", order_id=order["order_id"], wait_for_user=True)["status"] == "cancelled" and agreed
 
 

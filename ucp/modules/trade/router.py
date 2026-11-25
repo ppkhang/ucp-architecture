@@ -10,7 +10,7 @@ from starlette.concurrency import run_in_threadpool
 from ucp.common.errors import ErrorCode, UCPError
 from ucp.common.links import trim_link
 from ucp.modules.identity.router import current_agent
-from ucp.modules.trade import cancel, idempotency, service
+from ucp.modules.trade import agreed, cancel, idempotency, service
 
 router = APIRouter(prefix="/v1")
 
@@ -50,9 +50,17 @@ def confirm_page(checkout_id: LinkId) -> RedirectResponse:
 
 
 @router.post("/confirm/{checkout_id}", response_class=HTMLResponse)
-async def confirm_submit(checkout_id: uuid.UUID, request: Request) -> str:
+async def confirm_submit(checkout_id: uuid.UUID, request: Request) -> Response:
+    """The user pressed Agree: record it, then do it."""
     form = parse_qs((await request.body()).decode())
-    return await run_in_threadpool(service.record_confirmation, str(checkout_id), form.get("token", [""])[0])
+    http = request.app.state.platform_http
+
+    def agree() -> tuple[int, str, str | None]:
+        service.record_confirmation(str(checkout_id), form.get("token", [""])[0])  # refuses a bad or foreign token
+        return agreed.finish(str(checkout_id), http)
+
+    status, page, go_to = await run_in_threadpool(agree)
+    return RedirectResponse(go_to, status_code=303) if go_to else HTMLResponse(page, status_code=status)
 
 
 @router.get("/shipping/options")

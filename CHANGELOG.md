@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-25: Bấm đồng ý là thực hiện luôn
+
+### Đổi ADR và luồng (Khang quyết định)
+- ADR-007 sửa đổi: bấm đồng ý trên trang xác nhận thì UCP đặt đơn (rồi chuyển sang trang thanh toán) hoặc hủy đơn ngay. `confirm_order` và `cancel_order` của Agent trả lại kết quả đó.
+- Sau khi sàn từ chối hủy, `cancel_order` trả `UCP_CANNOT_CANCEL` thay vì đòi xác nhận lại.
+- Cập nhật addendum C3, `specs/APISpecs.md`, `specs/openapi.yaml`.
+
 ## 2026-11-25: Claude tự chờ user xác nhận
 
 - Tool MCP `confirm_order` và `cancel_order` có `wait_for_user`, `get_order` có `wait_for_payment`: lời gọi được giữ tối đa 50 giây và hoàn tất ngay khi user đồng ý hoặc trả tiền, nên user không phải báo lại cho Agent (BR-23). UCP vẫn kiểm tra xác nhận ở mỗi lần gọi.

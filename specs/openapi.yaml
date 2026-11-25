@@ -497,6 +497,7 @@ paths:
       summary: Fallback confirmation page (HTML), ADR-007
       description: |
         proposal_id names a checkout, or the cancel request from cancel_order's confirm_url.
+        When the user agrees on this page, UCP places or cancels the order at once (ADR-007).
         The user signs in with the platform account. The signed-in user must match the UserLink.
         The page shows UCP's stored proposal snapshot, never anything the agent sent.
         The confirmation is bound to the proposal hash, user, agent and expiry, and is single use.

@@ -69,6 +69,7 @@ def cancel_order(agent_id: str, idem_key: str, raw: dict, http: httpx.Client) ->
             "AND expires_at > now() ORDER BY created_at LIMIT 1 FOR UPDATE) "
             "RETURNING id, idempotency_key", (f"{agent_id}:{idem_key}", order_id, agent_id)).fetchone()
     if not req:
+        _raise_if_refused(order_id, agent_id)
         raise _needs_confirmation(order, agent_id)
     try:
         answer = adapter.cancel_order(token, shop_id, req["idempotency_key"])
@@ -85,6 +86,15 @@ def cancel_order(agent_id: str, idem_key: str, raw: dict, http: httpx.Client) ->
     _apply_cancel(order_id, shop, refund_ref)
     _settle(req["id"], "cancelled")
     return _result(order_id, refund_ref, shop)
+
+
+def _raise_if_refused(order_id: str, agent_id: str) -> None:
+    """The user agreed and the shop said no: answer that, instead of asking the user to agree again."""
+    with connect() as conn:
+        refused = conn.execute("SELECT 1 FROM trade.cancel_requests WHERE order_id = %s AND agent_id = %s "
+                               "AND outcome = 'refused' AND expires_at > now() LIMIT 1", (order_id, agent_id)).fetchone()
+    if refused:
+        raise UCPError(ErrorCode.CANNOT_CANCEL, "the shop refused to cancel this order")
 
 
 def _cancel_unpaid(adapter: Any, token: str, shop_id: str, key: str, order_id: str) -> dict | None:

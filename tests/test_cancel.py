@@ -7,8 +7,8 @@ import pytest
 
 from tests.conftest import agent, link
 from tests.test_reliability import rows
-from tests.test_trade import (FORM, MUG, checkout, code, confirm_order, intent, pay, setup, user_confirms,
-                              user_logs_in)
+from tests.test_trade import (FORM, MUG, agree_token, checkout, code, confirm_order, consent_only, intent, pay,
+                              press_agree, setup, user_confirms, user_logs_in)
 from ucp.adapters.base import PlatformTimeout
 from ucp.adapters.mock.client import MockPlatformAdapter
 from ucp.common.config import get_settings
@@ -40,10 +40,8 @@ def cancel(c, auth, order_id, key="c-1", **params):
 def agrees_to_cancel(c, refused):
     """The user opens the link from the 403 and agrees."""
     request_id = refused.json()["error"]["details"]["confirm_url"].rsplit("/", 1)[1]
-    page = user_logs_in(c, request_id)
-    assert page.status_code == 200, page.text
-    token = re.search(r"name=token value='([^']+)'", page.text).group(1)
-    assert c.post(f"/v1/confirm/{request_id}", content=f"token={token}", headers=FORM).status_code == 200
+    page, token = agree_token(c, request_id)
+    assert consent_only(c, request_id, token).status_code == 200
     return request_id, token, page
 
 
@@ -179,8 +177,8 @@ def test_shop_already_shipped_so_it_refuses_even_though_the_cache_is_stale(ucp):
     r = cancel(ucp, auth, order_id)
     assert (r.status_code, code(r)) == (409, "UCP_CANNOT_CANCEL")
     assert shop_order(ucp)["status"] == "shipped"
-    # that confirmation is used up
-    assert code(cancel(ucp, auth, order_id, "c-2")) == "UCP_CONFIRMATION_REQUIRED"
+    # the refusal is remembered: the agent hears it again instead of asking the user to agree again
+    assert code(cancel(ucp, auth, order_id, "c-2")) == "UCP_CANNOT_CANCEL"
 
 
 def test_a_purchase_confirmation_cannot_confirm_a_cancel(ucp):
@@ -474,7 +472,7 @@ def test_a_signed_in_browser_goes_straight_to_agree_but_cannot_link_that_way(ucp
     back = ucp.shop.get(on_shop(to_shop), follow_redirects=False)
     assert back.status_code == 302  # no Continue click
     page = ucp.get("/oauth/callback", params=dict(parse_qsl(urlparse(back.headers["location"]).query)))
-    assert page.status_code == 200 and "Agree and confirm" in page.text
+    assert page.status_code == 200 and "Agree and place the order" in page.text
     assert code(confirm_order(ucp, auth, second["checkout_id"])) == "UCP_CONFIRMATION_REQUIRED"  # still needs Agree
 
     # a stranger rewrites a linking address to the sign-in-only client: the silent code cannot link
@@ -485,4 +483,76 @@ def test_a_signed_in_browser_goes_straight_to_agree_but_cannot_link_that_way(ucp
     r = ucp.get("/oauth/callback", params=dict(parse_qsl(urlparse(silent.headers["location"]).query)))
     assert (r.status_code, code(r)) == (400, "UCP_BAD_REQUEST")
     assert ucp.get(f"/v1/agents/{other}/permissions", headers=other_auth).json()["permissions"] == ["read_catalog"]
+
+
+# -- pressing Agree does the thing (ADR-007, amended 2026-11-25) ---------------
+
+def test_agree_places_the_order_and_opens_the_payment_page(ucp):
+    _, auth = setup(ucp)
+    co = checkout(ucp, auth)
+    _, token = agree_token(ucp, co["checkout_id"])
+    r = press_agree(ucp, co["checkout_id"], token)
+    assert r.status_code == 303 and r.headers["location"] == f"http://localhost:9000/pay/{shop_order(ucp)['id']}"
+    again = press_agree(ucp, co["checkout_id"], token)  # double click or refresh
+    assert again.status_code == 303 and again.headers["location"] == r.headers["location"]
+    agent_view = confirm_order(ucp, auth, co["checkout_id"])  # the agent learns the result, no second order
+    assert agent_view.json()["payment_url"] == r.headers["location"] and len(shop(ucp).orders) == 1
+
+
+def test_agree_cancels_at_once_and_twice_is_once(ucp):
+    _, auth = setup(ucp)
+    order_id = placed(ucp, auth)
+    request_id = cancel(ucp, auth, order_id).json()["error"]["details"]["confirm_url"].rsplit("/", 1)[1]
+    _, token = agree_token(ucp, request_id)
+    for _ in range(2):
+        r = press_agree(ucp, request_id, token)
+        assert r.status_code == 200 and "Order cancelled" in r.text and f"/order/{shop_order(ucp)['id']}" in r.text
+    assert shop_order(ucp)["status"] == "cancelled" and len(shop(ucp).refunds) == 1
+    assert order_status(ucp, auth, order_id) == "cancelled"  # without the agent doing anything
+    assert cancel(ucp, auth, order_id, "c-9").json()["status"] == "cancelled"
+
+
+def test_agree_shows_the_shops_refusal_and_the_agent_hears_it(ucp):
+    _, auth = setup(ucp)
+    order_id = placed(ucp, auth)
+    request_id = cancel(ucp, auth, order_id).json()["error"]["details"]["confirm_url"].rsplit("/", 1)[1]
+    _, token = agree_token(ucp, request_id)
+    for status in ("processing", "shipped"):
+        ucp.shop.post(f"/_admin/orders/{shop_order(ucp)['id']}/status", params={"status": status})
+    r = press_agree(ucp, request_id, token)
+    assert r.status_code == 409 and "The order was not cancelled" in r.text
+    assert code(cancel(ucp, auth, order_id, "c-2")) == "UCP_CANNOT_CANCEL"
+
+
+def test_agree_after_a_price_rise_places_nothing(ucp):
+    _, auth = setup(ucp)
+    co = checkout(ucp, auth)
+    _, token = agree_token(ucp, co["checkout_id"])
+    ucp.shop.post("/_admin/variants/v_mug", params={"price": 999_000})
+    r = press_agree(ucp, co["checkout_id"], token)
+    assert r.status_code == 409 and "The order was not placed" in r.text and not shop(ucp).orders
+    assert code(confirm_order(ucp, auth, co["checkout_id"])) == "UCP_PRICE_CHANGED"
+
+
+def test_agree_with_a_lost_answer_says_not_to_buy_again_and_makes_one_order(ucp, monkeypatch):
+    _, auth = setup(ucp)
+    co = checkout(ucp, auth)
+    _, token = agree_token(ucp, co["checkout_id"])
+
+    def never_arrived(*a, **k):
+        raise PlatformTimeout()
+
+    with monkeypatch.context() as m:
+        m.setattr(MockPlatformAdapter, "place_order", never_arrived)
+        r = press_agree(ucp, co["checkout_id"], token)
+    assert r.status_code == 503 and "Do not buy it again" in r.text and not shop(ucp).orders
+    workers.sync_orders(ucp.shop, min_age=0)
+    assert len(shop(ucp).orders) == 1
+
+
+def test_a_bad_token_does_nothing_when_agree_is_pressed(ucp):
+    _, auth = setup(ucp)
+    co = checkout(ucp, auth)
+    r = press_agree(ucp, co["checkout_id"], "made-up-by-the-agent")
+    assert r.status_code == 403 and not shop(ucp).orders
 

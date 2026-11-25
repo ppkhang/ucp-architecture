@@ -3,10 +3,12 @@ import re
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+import pytest
 
 from tests.conftest import agent, link
 from ucp.api.main import app
 from ucp.common.db import connect
+from ucp.modules.trade import agreed
 
 MUG = [{"product_id": "p_mug", "qty": 2}]  # 2 x 90,000 + HCM shipping 20,000 = 200,000
 FORM = {"content-type": "application/x-www-form-urlencoded"}
@@ -34,12 +36,27 @@ def user_logs_in(c, checkout_id, user="khang", password="khang123"):
     return c.get("/oauth/callback", params={"code": back["code"][0], "state": back["state"][0]})
 
 
+def agree_token(c, proposal_id):
+    page = user_logs_in(c, proposal_id)
+    assert page.status_code == 200, page.text
+    return page, re.search(r"name=token value='([^']+)'", page.text).group(1)
+
+
+def press_agree(c, proposal_id, token):
+    return c.post(f"/v1/confirm/{proposal_id}", content=f"token={token}", headers=FORM, follow_redirects=False)
+
+
+def consent_only(c, proposal_id, token):
+    """Agree, but UCP stops right after saving it, as if it could not finish then. This leaves the state in which
+    the agent's own confirm_order or cancel_order does the work, so those paths can be tested on their own."""
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr(agreed, "finish", lambda *a: (200, "saved", None))
+        return press_agree(c, proposal_id, token)
+
+
 def user_confirms(c, checkout_id):
-    page = user_logs_in(c, checkout_id)
-    assert page.status_code == 200
-    token = re.search(r"name=token value='([^']+)'", page.text).group(1)
-    r = c.post(f"/v1/confirm/{checkout_id}", content=f"token={token}", headers=FORM)
-    assert r.status_code == 200
+    page, token = agree_token(c, checkout_id)
+    assert consent_only(c, checkout_id, token).status_code == 200
     return page
 
 
@@ -120,7 +137,7 @@ def test_stale_confirmation_fails_loudly_and_resubmit_is_harmless(ucp):
     co = checkout(ucp, auth, "co-2")
     token = re.search(r"name=token value='([^']+)'", user_logs_in(ucp, co["checkout_id"]).text).group(1)
     for _ in range(2):  # a double submit of the same confirmation still shows "Confirmed"
-        assert ucp.post(f"/v1/confirm/{co['checkout_id']}", content=f"token={token}", headers=FORM).status_code == 200
+        assert consent_only(ucp, co["checkout_id"], token).status_code == 200
 
 
 def test_other_agent_cannot_use_a_checkout(ucp):
