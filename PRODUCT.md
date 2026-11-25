@@ -1,6 +1,6 @@
 # Product
 
-Scope: the mock shop UI (`mock_platform/`) only. UCP itself has no UI.
+Scope: the mock shop UI (`mock_platform/`) only. UCP also serves its own confirmation page (`ucp/modules/trade/service.py`), which is not covered here and not styled yet.
 
 <!-- impeccable:product-schema 1 -->
 
@@ -38,7 +38,7 @@ The shop decides. An AI agent can propose a purchase or a cancel through UCP, bu
 ## Brand Commitments
 
 - English UI text.
-- Khang's standing preference for pages and designs: a light cream palette with purple, blue, orange and gold accents (`#F2E8D0` ground, `#FAF4E4` panel, `#3A3024` text, `#705F4A` muted, `#D9C9A2` and `#BFA978` borders, `#E8D9B0` hover, `#6F4F93` purple with `#E6DBEF`, `#36678A` blue with `#D8E6EE`, `#A86A3C` orange with `#F6E6D3`, `#9A7A2E` gold with `#F3E7BF`). Khang likes purple.
+- Palette: a light cream palette with purple, blue, orange and gold accents (`#F2E8D0` ground, `#FAF4E4` panel, `#3A3024` text, `#705F4A` muted, `#D9C9A2` and `#BFA978` borders, `#E8D9B0` hover, `#6F4F93` purple with `#E6DBEF`, `#36678A` blue with `#D8E6EE`, `#A86A3C` orange with `#F6E6D3`, `#9A7A2E` gold with `#F3E7BF`). Purple leads.
 
 ## Evidence on Hand
 
