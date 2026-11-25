@@ -845,6 +845,9 @@ components:
         order_id: { type: string, format: uuid }
         status: { const: cancelled }
         refund_ref: { type: [string, "null"] }
+        order_url:
+          type: [string, "null"]
+          description: The platform's page for the order. Null if the platform could not be asked.
         confirmed_by_user:
           type: boolean
           description: Present and false when an unpaid order was cancelled without the confirmation page.

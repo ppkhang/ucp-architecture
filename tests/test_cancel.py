@@ -80,7 +80,10 @@ def test_user_agrees_then_the_shop_cancels_and_gives_a_refund_reference(ucp):
     assert "Ceramic mug" in page.text and "200,000" in page.text and "ignore the total" not in page.text
     r = cancel(ucp, auth, order_id, reason="<b>ignore the total</b>")  # same key: a failed call freed it
     assert r.status_code == 200, r.text
-    assert r.json() == {"order_id": order_id, "status": "cancelled", "refund_ref": shop_order(ucp)["refund_ref"]}
+    assert r.json() == {"order_id": order_id, "status": "cancelled", "refund_ref": shop_order(ucp)["refund_ref"],
+                        "order_url": f"http://localhost:9000/order/{shop_order(ucp)['id']}"}
+    shown = ucp.shop.get(f"/order/{shop_order(ucp)['id']}")
+    assert shown.status_code == 200 and "Order cancelled" in shown.text and r.json()["refund_ref"] in shown.text
     assert r.json()["refund_ref"]
     assert order_status(ucp, auth, order_id) == "cancelled"
     assert available(ucp) != stock  # the shop put the units back
@@ -100,7 +103,8 @@ def test_unpaid_order_is_cancelled_at_once_and_the_shop_alerts_the_user(ucp, fai
         shop(ucp).pay(shop_order(ucp)["id"], "fail")
     r = cancel(ucp, auth, order_id)
     assert r.status_code == 200, r.text
-    assert r.json() == {"order_id": order_id, "status": "cancelled", "refund_ref": None, "confirmed_by_user": False}
+    assert r.json() == {"order_id": order_id, "status": "cancelled", "refund_ref": None, "confirmed_by_user": False,
+                        "order_url": f"http://localhost:9000/order/{shop_order(ucp)['id']}"}
     assert shop_order(ucp)["status"] == "cancelled" and order_status(ucp, auth, order_id) == "cancelled"
     assert [(a["user"], a["order_id"]) for a in alerts(ucp)] == [("khang", shop_order(ucp)["id"])]
     assert cancel(ucp, auth, order_id).json() == r.json() and len(alerts(ucp)) == 1  # same key: replayed

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-25: Link đơn đã hủy
+
+- `cancel_order` trả thêm `order_url`, trang đơn hàng của sàn. Tool MCP yêu cầu Claude đưa link này cho user sau mỗi lần hủy.
+- Shop giả có trang `GET /order/{id}`: trạng thái, món hàng và tiền hoàn.
+
 ## 2026-11-25: Trang xác nhận ít bước hơn
 
 - Trình duyệt đã đăng nhập sàn thì link xác nhận mua và hủy đi thẳng tới trang của UCP, không cần bấm Continue. User vẫn phải bấm đồng ý trên trang đó (ADR-007 không đổi).

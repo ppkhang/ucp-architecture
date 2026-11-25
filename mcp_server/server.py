@@ -18,7 +18,8 @@ INSTRUCTIONS = """Shop through UCP for the user. The only platform is "mock", a 
 5. Call cancel_order only when the user asked you to cancel. An unpaid order is cancelled at once: if the result
    has confirmed_by_user false, tell the user plainly that it was cancelled without a confirmation page. A paid
    order answers UCP_CONFIRMATION_REQUIRED with details.confirm_url: give it to the user, wait, then call
-   cancel_order again. The shop may refuse (UCP_CANNOT_CANCEL).
+   cancel_order again. The shop may refuse (UCP_CANNOT_CANCEL). After every successful cancel, ALWAYS show the
+   user the order_url from the result, so they can see the cancelled order.
 6. Put every link (auth_url, confirm_url, payment_url) alone on its own line, exactly as given: no brackets,
    quotes, bold or punctuation around it, or the link breaks.
 7. If a call fails because UCP or the shop did not answer, retry with the idempotency_key named in the error.
@@ -117,6 +118,10 @@ def build_server(ucp: UCPClient, **settings: Any) -> MCPServer:
         """Cancel an order, only when the user asked. Unpaid: cancelled at once, tell the user. Paid: returns a
         confirm_url for the user; call again after they agree."""
         params = {"order_id": order_id} | ({"reason": reason} if reason else {})
-        return ucp.intent("cancel_order", params, idempotency_key)
+        result = ucp.intent("cancel_order", params, idempotency_key)
+        if result.get("order_url"):  # said again in the result itself, where the model reads it last
+            result["show_the_user"] = ("In your reply, give the user this link to the cancelled order, alone on its "
+                                       f"own line:\n{result['order_url']}")
+        return result
 
     return mcp

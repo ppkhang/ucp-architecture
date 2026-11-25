@@ -231,6 +231,24 @@ def create_app(config: Config | None = None) -> FastAPI:
             extra += f"<li><span>Discount</span><span>-{o['discount']:,} VND</span></li>"
         return (f"<ul class=items>{rows}{extra}<li><strong>Total</strong><strong>{o['total']:,} VND</strong></li></ul>")
 
+    @app.get("/order/{order_id}", response_class=HTMLResponse)
+    async def order_page(order_id: str):
+        """One order, for the link an assistant gives the user. Reached by its random id, like the payment page."""
+        order_id = order_id.rstrip(LINK_TAIL)
+        o = platform.orders.get(order_id)
+        if not o:
+            return _page("Not found", _waybill("Not found", "<p class=items>No such order.</p>"), 404)
+        status = o["status"].replace("_", " ")
+        refund = platform.refunds.get(o["refund_ref"])
+        note = (f"<p class=items>Refund {html.escape(refund['ref'])}: {html.escape(refund['status'])}</p>"
+                if refund else "")
+        pay = (f"<a class='button primary' href='/pay/{html.escape(order_id)}'>Pay</a>"
+               if o["status"] == "pending_payment" else "")
+        return _page("Order " + order_id, _waybill(
+            "Order " + status,
+            f"<p class='items muted'>{html.escape(order_id)}</p>{_pay_body(o)}{note}"
+            f"<div class=actions>{pay}<a class=button href='/#orders'>See my orders</a></div>"))
+
     @app.get("/pay/{order_id}", response_class=HTMLResponse)
     async def pay_page(order_id: str):
         order_id = order_id.rstrip(LINK_TAIL)

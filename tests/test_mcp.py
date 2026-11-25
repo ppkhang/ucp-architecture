@@ -104,7 +104,9 @@ def test_a_whole_purchase_and_cancel_through_the_tools(ucp, claude):
     page = user_logs_in(ucp, request_id)
     token = re.search(r"name=token value='([^']+)'", page.text).group(1)
     ucp.post(f"/v1/confirm/{request_id}", content=f"token={token}", headers=FORM)
-    assert claude.ok("cancel_order", order_id=order["order_id"])["status"] == "cancelled"
+    done = claude.ok("cancel_order", order_id=order["order_id"])
+    assert done["status"] == "cancelled" and "/order/" in done["order_url"]
+    assert done["order_url"] in done["show_the_user"]
 
     spare = claude.ok("create_checkout", items=[{"product_id": "p_mug", "qty": 1}])
     assert claude.ok("cancel_checkout", checkout_id=spare["checkout_id"])["status"] == "cancelled"

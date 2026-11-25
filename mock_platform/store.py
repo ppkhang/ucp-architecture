@@ -385,6 +385,7 @@ class Platform:
         view = {k: v for k, v in o.items() if not k.startswith("_") and k != "user"}
         view["payment_deadline"] = self.iso(o["_deadline"])
         view["payment_url"] = f"{self.config.base_url}/pay/{o['id']}" if o["status"] == "pending_payment" else None
+        view["order_url"] = f"{self.config.base_url}/order/{o['id']}"
         return view
 
     def get_order(self, user: str, order_id: str) -> dict[str, Any]:

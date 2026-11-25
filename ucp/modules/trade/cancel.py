@@ -25,8 +25,9 @@ class CancelOrderParams(BaseModel):
     reason: str | None = Field(None, max_length=500)  # accepted, never shown to the user or sent on
 
 
-def _result(order_id: str, refund_ref: str | None) -> dict:
-    return {"order_id": order_id, "status": "cancelled", "refund_ref": refund_ref}
+def _result(order_id: str, refund_ref: str | None, shop: dict) -> dict:
+    # order_url is the platform's own page for the order, for the agent to show the user
+    return {"order_id": order_id, "status": "cancelled", "refund_ref": refund_ref, "order_url": shop.get("order_url")}
 
 
 def cancel_order(agent_id: str, idem_key: str, raw: dict, http: httpx.Client) -> dict:
@@ -41,7 +42,11 @@ def cancel_order(agent_id: str, idem_key: str, raw: dict, http: httpx.Client) ->
     # cancel_order needs a live UserLink, checked on every call (hard rule 11)
     link = identity.get_link(agent_id, link_id=str(order["link_id"]), http=http)
     if order["status"] == "cancelled":
-        return _result(order_id, order["refund_ref"])
+        try:
+            shop = get_adapter(order["platform_id"], http).get_order(link["access_token"], order["platform_order_id"])
+        except UCPError:
+            shop = {}  # the order is cancelled either way, only the link is missing
+        return _result(order_id, order["refund_ref"], shop)
     if order["reconciling"] or not order["platform_order_id"]:
         raise UCPError(ErrorCode.BAD_REQUEST, "the order is still being confirmed with the shop, try again later")
     # No refusal from the cached status: it can be stale, so only the platform says no (ADR-006).
@@ -50,7 +55,7 @@ def cancel_order(agent_id: str, idem_key: str, raw: dict, http: httpx.Client) ->
     shop = adapter.get_order(token, shop_id)  # live: also finds a cancel whose answer was lost
     if shop["status"] == "cancelled":
         _apply_cancel(order_id, shop, shop.get("refund_ref"))
-        return _result(order_id, shop.get("refund_ref"))
+        return _result(order_id, shop.get("refund_ref"), shop)
     if shop["status"] == "pending_payment" and shop["payment_status"] in UNPAID:
         unconfirmed = _cancel_unpaid(adapter, token, shop_id, f"{agent_id}:{idem_key}", order_id)
         if unconfirmed:
@@ -79,7 +84,7 @@ def cancel_order(agent_id: str, idem_key: str, raw: dict, http: httpx.Client) ->
         raise
     _apply_cancel(order_id, shop, refund_ref)
     _settle(req["id"], "cancelled")
-    return _result(order_id, refund_ref)
+    return _result(order_id, refund_ref, shop)
 
 
 def _cancel_unpaid(adapter: Any, token: str, shop_id: str, key: str, order_id: str) -> dict | None:
@@ -97,7 +102,7 @@ def _cancel_unpaid(adapter: Any, token: str, shop_id: str, key: str, order_id: s
             return None
         raise
     _apply_cancel(order_id, shop, refund_ref)
-    return _result(order_id, refund_ref) | {"confirmed_by_user": False}
+    return _result(order_id, refund_ref, shop) | {"confirmed_by_user": False}
 
 
 def _apply_cancel(order_id: str, shop: dict, refund_ref: str | None) -> None:

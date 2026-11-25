@@ -233,6 +233,7 @@ Theo [`docs/UCP_v1.1_Addendum.md`](../docs/UCP_v1.1_Addendum.md) và ADR-006 đ�
 - **GET /orders/{id}:** thêm `platform_order_ids[]` (một checkout có thể tách thành nhiều đơn theo người bán).
 
 ### Hủy đơn, thay đổi checkout, BR-26
+- Kết quả `cancel_order` có `order_url`: trang đơn hàng của sàn, Agent đưa cho user (null nếu không hỏi được sàn).
 - Đơn **chưa thanh toán** (`pending_payment`, thanh toán `pending` hoặc `failed`) được hủy ngay, không cần trang xác nhận; kết quả có thêm `confirmed_by_user: false` và sàn báo cho user. Sàn kiểm tra "chưa thanh toán" và hủy trong cùng một bước (`cancelOrder(..., onlyIfUnpaid)`).
 - Đơn đã hoặc đang thanh toán: `cancel_order` khi user chưa đồng ý: 403 `UCP_CONFIRMATION_REQUIRED`, `details` có `confirm_url` và `expires_at`. User mở link, đăng nhập sàn, đồng ý, rồi Agent gọi lại `cancel_order`. Kết quả: `{ order_id, status: "cancelled", refund_ref }`. UCP chỉ lưu `refund_ref`, chưa theo dõi trạng thái hoàn tiền.
 - `GET /confirm/{proposal_id}` dùng chung cho checkout và yêu cầu hủy.
