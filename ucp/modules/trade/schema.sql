@@ -80,3 +80,31 @@ CREATE INDEX IF NOT EXISTS outbox_pending ON trade.outbox (seq) WHERE delivered_
 -- CREATE TABLE IF NOT EXISTS never adds columns to a table from an older step, so changes go here.
 ALTER TABLE trade.checkouts ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'open';
 ALTER TABLE trade.orders ADD COLUMN IF NOT EXISTS synced_at timestamptz; -- worker poll marker, so updated_at only moves on real changes
+
+-- Step 9: checkout changes, the refund reference, and cancel requests confirmed on the same page (ADR-007).
+ALTER TABLE trade.checkouts ADD COLUMN IF NOT EXISTS shipping_method_id text;
+ALTER TABLE trade.checkouts ADD COLUMN IF NOT EXISTS promo_code text;
+ALTER TABLE trade.checkouts ADD COLUMN IF NOT EXISTS extended_at timestamptz;
+ALTER TABLE trade.checkouts ADD COLUMN IF NOT EXISTS failure_code text; -- why the shop refused the order
+ALTER TABLE trade.orders ADD COLUMN IF NOT EXISTS refund_ref text; -- tracked by the payment context later (ADR-008)
+CREATE INDEX IF NOT EXISTS checkouts_shop_user ON trade.checkouts (platform_id, platform_user);
+
+CREATE TABLE IF NOT EXISTS trade.cancel_requests (
+    id              uuid PRIMARY KEY,
+    order_id        uuid NOT NULL REFERENCES trade.orders(id) ON DELETE CASCADE,
+    agent_id        uuid NOT NULL,
+    platform_user   text NOT NULL,
+    snapshot        jsonb NOT NULL,
+    snapshot_hash   text NOT NULL,
+    expires_at      timestamptz NOT NULL,
+    confirmed_at    timestamptz,
+    confirmed_hash  text,
+    confirmed_user  text,
+    idempotency_key text, -- set when the confirmation is used; a retry after a lost answer resends this one
+    outcome         text, -- NULL until the platform answers: 'cancelled' or 'refused'
+    created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+-- A confirmation login belongs to a checkout or to a cancel request.
+ALTER TABLE trade.confirm_states ALTER COLUMN checkout_id DROP NOT NULL;
+ALTER TABLE trade.confirm_states ADD COLUMN IF NOT EXISTS cancel_id uuid REFERENCES trade.cancel_requests(id) ON DELETE CASCADE;

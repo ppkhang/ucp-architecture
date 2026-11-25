@@ -1,21 +1,24 @@
 import uuid
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ucp.common.errors import ErrorCode, UCPError
 from ucp.modules.identity.router import current_agent
-from ucp.modules.trade import idempotency, service
+from ucp.modules.trade import cancel, idempotency, service
 
 router = APIRouter(prefix="/v1")
 
-# shortcut: the other intents (select_shipping_method, apply_promotion, cancel_checkout, extend_checkout,
-# cancel_order) arrive in step 9
 HANDLERS = {"create_checkout": lambda a, k, p, h: service.create_checkout(a, p, h),
-            "confirm_order": service.confirm_order}
+            "select_shipping_method": lambda a, k, p, h: service.select_shipping_method(a, p, h),
+            "apply_promotion": lambda a, k, p, h: service.apply_promotion(a, p, h),
+            "extend_checkout": lambda a, k, p, h: service.extend_checkout(a, p, h),
+            "cancel_checkout": lambda a, k, p, h: service.cancel_checkout(a, p, h),
+            "confirm_order": service.confirm_order,
+            "cancel_order": cancel.cancel_order}
 
 
 class IntentIn(BaseModel):
@@ -45,6 +48,13 @@ def confirm_page(checkout_id: uuid.UUID) -> RedirectResponse:
 async def confirm_submit(checkout_id: uuid.UUID, request: Request) -> str:
     form = parse_qs((await request.body()).decode())
     return await run_in_threadpool(service.record_confirmation, str(checkout_id), form.get("token", [""])[0])
+
+
+@router.get("/shipping/options")
+def shipping_options(request: Request, platform_id: str, city: str = Query(min_length=1, max_length=64),
+                     district: str | None = None, agent_id: str = Depends(current_agent)) -> dict:
+    # the city is the shop's region; the mock shop does not price by district
+    return service.shipping_options(agent_id, platform_id, city, request.app.state.platform_http)
 
 
 @router.get("/orders/{order_id}")

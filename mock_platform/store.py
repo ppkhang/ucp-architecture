@@ -29,6 +29,10 @@ CANCELLABLE = {"pending_payment", "placed", "processing"}
 
 SHIPPING_FEES = {"HCM": 20_000, "HN": 25_000}
 DEFAULT_SHIPPING_FEE = 35_000
+# method id -> (name, surcharge on the region fee, days to arrive)
+SHIPPING_METHODS = {"standard": ("Standard", 0, 3), "express": ("Express", 30_000, 1)}
+# code -> (VND off the subtotal, smallest subtotal it applies to)
+PROMOTIONS = {"SAVE20K": (20_000, 100_000), "SAVE100K": (100_000, 1_000_000)}
 
 
 class PlatformError(Exception):
@@ -79,6 +83,9 @@ class Checkout:
     subtotal: int
     shipping_fee: int
     total: int
+    shipping_method_id: str = "standard"
+    promo_code: str | None = None
+    discount: int = 0
     status: str = "open"  # open | converted | released | expired
     hold_expires_at: datetime | None = None
 
@@ -242,21 +249,43 @@ class Platform:
                           "quantity": it["quantity"], "amount": amount, "available": v.available})
         return lines, subtotal, SHIPPING_FEES.get(region, DEFAULT_SHIPPING_FEE)
 
-    def quote(self, items: list[dict[str, Any]], region: str) -> dict[str, Any]:
-        lines, subtotal, fee = self._price_lines(items, region)
+    def shipping_options(self, region: str) -> list[dict[str, Any]]:
+        base = SHIPPING_FEES.get(region, DEFAULT_SHIPPING_FEE)
+        return [{"id": k, "name": name, "fee": base + extra, "eta_days": days}
+                for k, (name, extra, days) in SHIPPING_METHODS.items()]
+
+    def _price(self, items: list[dict[str, Any]], region: str, method: str | None, promo: str | None) -> dict[str, Any]:
+        lines, subtotal, base = self._price_lines(items, region)
+        method = method or "standard"
+        if method not in SHIPPING_METHODS:
+            raise PlatformError(422, "INVALID_REQUEST", f"unknown shipping method {method}")
+        discount = 0
+        if promo is not None:
+            if promo not in PROMOTIONS:
+                raise PlatformError(422, "INVALID_REQUEST", "unknown promotion code")
+            discount, minimum = PROMOTIONS[promo]
+            if subtotal < minimum:
+                raise PlatformError(422, "INVALID_REQUEST", f"{promo} needs a subtotal of at least {minimum}")
+        fee = base + SHIPPING_METHODS[method][1]
+        return {"lines": lines, "subtotal": subtotal, "shipping_fee": fee, "discount": discount,
+                "total": subtotal + fee - discount, "shipping_method_id": method, "promo_code": promo}
+
+    def quote(self, items: list[dict[str, Any]], region: str, method: str | None = None,
+              promo: str | None = None) -> dict[str, Any]:
+        price = self._price(items, region, method, promo)
+        lines = price["lines"]
         return {
-            "lines": lines,
-            "subtotal": subtotal,
-            "shipping_fee": fee,
-            "total": subtotal + fee,
+            **price,
             "in_stock": all(ln["available"] >= ln["quantity"] for ln in lines),
         }
 
     # -- checkout --------------------------------------------------------
 
     def create_checkout(self, user: str, items: list[dict[str, Any]], region: str,
-                        address_id: str | None) -> dict[str, Any]:
-        lines, subtotal, fee = self._price_lines(items, region)
+                        address_id: str | None, method: str | None = None,
+                        promo: str | None = None) -> dict[str, Any]:
+        price = self._price(items, region, method, promo)
+        lines = price["lines"]
         for ln in lines:
             if ln["available"] < ln["quantity"]:
                 raise PlatformError(409, "OUT_OF_STOCK", f"{ln['variant_id']}: only {ln['available']} left")
@@ -264,7 +293,8 @@ class Platform:
             id="co_" + uuid.uuid4().hex[:12], user=user,
             items=[{"variant_id": ln["variant_id"], "quantity": ln["quantity"]} for ln in lines],
             region=region, address_id=address_id,
-            subtotal=subtotal, shipping_fee=fee, total=subtotal + fee,
+            subtotal=price["subtotal"], shipping_fee=price["shipping_fee"], total=price["total"],
+            shipping_method_id=price["shipping_method_id"], promo_code=promo, discount=price["discount"],
         )
         if self.config.supports_holds:
             co.hold_expires_at = self.now() + timedelta(seconds=self.config.hold_seconds)
@@ -277,7 +307,8 @@ class Platform:
         lines, _, _ = self._price_lines(co.items, co.region)
         return {
             "id": co.id, "status": co.status, "lines": lines, "subtotal": co.subtotal,
-            "shipping_fee": co.shipping_fee, "total": co.total, "region": co.region,
+            "shipping_fee": co.shipping_fee, "discount": co.discount, "total": co.total, "region": co.region,
+            "shipping_method_id": co.shipping_method_id, "promo_code": co.promo_code,
             "address_id": co.address_id,
             "hold": {"held": co.hold_expires_at is not None and co.status == "open",
                      "expires_at": self.iso(co.hold_expires_at)},
@@ -318,7 +349,8 @@ class Platform:
             raise PlatformError(409, "CHECKOUT_EXPIRED", f"checkout is {co.status}")
         held = co.hold_expires_at is not None
         # Price is read now, not from the checkout: it may have moved since.
-        lines, subtotal, fee = self._price_lines(co.items, co.region)
+        price = self._price(co.items, co.region, co.shipping_method_id, co.promo_code)
+        lines = price["lines"]
         for ln in lines:
             v = self.variants[ln["variant_id"]]
             have = v.stock if held else v.available  # a hold already counts in `reserved`
@@ -333,7 +365,8 @@ class Platform:
         order = {
             "id": "ord_" + uuid.uuid4().hex[:12], "user": user, "checkout_id": co.id,
             "status": "pending_payment", "payment_status": "pending",
-            "lines": lines, "subtotal": subtotal, "shipping_fee": fee, "total": subtotal + fee,
+            "lines": lines, "subtotal": price["subtotal"], "shipping_fee": price["shipping_fee"],
+            "discount": price["discount"], "total": price["total"],
             "idempotency_key": key, "refund_ref": None,
             "created_at": self.iso(self.now()),
             "_deadline": self.now() + timedelta(seconds=self.config.payment_deadline_seconds),

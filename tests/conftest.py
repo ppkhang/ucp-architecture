@@ -17,7 +17,7 @@ def ucp():
     app.state.platform_http = shop
     with TestClient(app) as c:  # runs lifespan: applies schemas
         with connect() as conn:
-            conn.execute("TRUNCATE notification.events, trade.outbox,trade.platform_events, trade.idempotency, trade.orders, trade.confirm_states, "
+            conn.execute("TRUNCATE notification.events, trade.outbox,trade.platform_events, trade.idempotency, trade.orders, trade.confirm_states, trade.cancel_requests, "
                          "trade.checkouts, identity.platform_tokens, identity.user_links, identity.agents")
         c.shop = shop
         c.deliveries = []  # webhooks the shop sent, kept so tests can replay or tamper with them

@@ -232,6 +232,14 @@ Theo [`docs/UCP_v1.1_Addendum.md`](../docs/UCP_v1.1_Addendum.md) và ADR-006 đ�
 - **cancel_order:** scope `cancel_order`, user xác nhận qua trang xác nhận. Sàn quyết định (`UCP_CANNOT_CANCEL`).
 - **GET /orders/{id}:** thêm `platform_order_ids[]` (một checkout có thể tách thành nhiều đơn theo người bán).
 
+### Hủy đơn, thay đổi checkout, BR-26
+- `cancel_order` khi user chưa đồng ý: 403 `UCP_CONFIRMATION_REQUIRED`, `details` có `confirm_url` và `expires_at`. User mở link, đăng nhập sàn, đồng ý, rồi Agent gọi lại `cancel_order`. Kết quả: `{ order_id, status: "cancelled", refund_ref }`. UCP chỉ lưu `refund_ref`, chưa theo dõi trạng thái hoàn tiền.
+- `GET /confirm/{proposal_id}` dùng chung cho checkout và yêu cầu hủy.
+- `select_shipping_method`, `apply_promotion`: sàn báo giá lại bằng một checkout mới, xác nhận cũ bị bỏ, hạn checkout không tăng. Proposal có thêm `shipping_method_id`.
+- `extend_checkout`: một lần, không vượt hạn giữ hàng.
+- BR-26: tối đa 3 checkout đang mở mỗi user mỗi sàn, tính trên mọi Agent. 3 checkout liên tiếp hết hạn thì chờ 10 phút. Cả hai trường hợp trả 429 `UCP_QUOTA_EXCEEDED`.
+- `PlatformAdapter`: `createCheckout` và `getQuote` nhận thêm hình thức giao và mã giảm giá; thêm method `shippingOptions(region)` cho `GET /shipping/options` (`city` là region của sàn).
+
 ### Event (`/events/stream`, `/events?after={seq}`)
 - Cả hai endpoint cần UserLink (403 `UCP_NO_USER_LINK`). Tham số hoặc `Last-Event-ID` sai trả 400 `UCP_BAD_REQUEST`.
 - Mỗi event: `{ seq, event_id, event_type, payload, occurred_at }`, `seq` tăng theo từng Agent.

@@ -22,7 +22,7 @@ def expire_checkouts(http: httpx.Client) -> int:
     with connect() as conn:
         rows = conn.execute(
             "UPDATE trade.checkouts SET status = 'expired' WHERE id IN ("
-            "SELECT id FROM trade.checkouts WHERE status = 'open' AND consumed_at IS NULL AND expires_at <= now() "
+            "SELECT id FROM trade.checkouts WHERE status IN ('open', 'updating') AND consumed_at IS NULL AND expires_at <= now() "
             "ORDER BY expires_at LIMIT 100 FOR UPDATE SKIP LOCKED) "
             "RETURNING id, agent_id, link_id, platform_id, platform_checkout_id, "
             "coalesce(hold_expires_at > now(), false) AS hold_live").fetchall()
@@ -77,5 +77,6 @@ def sync_orders(http: httpx.Client, min_age: int = 30) -> int:
             row = conn.execute("SELECT id, agent_id, platform_id, status, payment_status FROM trade.orders "
                                "WHERE id = %s FOR UPDATE", (o["id"],)).fetchone()
             service.apply_status(conn, row, plat["status"], plat["payment_status"])
+            service.save_refund_ref(conn, row["id"], plat.get("refund_ref"))
         done += 1
     return done

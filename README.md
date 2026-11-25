@@ -47,7 +47,7 @@ v1.1 là thiết kế sau bảo vệ, không thuộc báo cáo đã nộp. Đang
 
 ## Hiện thực v1.1 (đang xây)
 
-> **Đang xây, chưa dùng được thật.** Bước 1 đến 8 xong, bước 9 đến 11 chưa làm. Chỉ chạy với sàn giả (`mock_platform/`), chưa có sàn thật, chưa có MCP server nên chưa nối được với Claude.
+> **Đang xây, chưa dùng được thật.** Bước 1 đến 9 xong, bước 10 và 11 chưa làm. Chỉ chạy với sàn giả (`mock_platform/`), chưa có sàn thật, chưa có MCP server nên chưa nối được với Claude.
 
 Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bước). Python 3.12, FastAPI, modular monolith.
 
@@ -61,7 +61,8 @@ Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bư�
 | 6 | Trade: tạo checkout, trang xác nhận của user, `confirm_order`, webhook, đơn `placed` (lát cắt đầu tiên từ đầu đến cuối) | Xong |
 | 7 | Độ tin cậy: outbox, ExpiryWorker, OrderSyncWorker (đối soát + poll đơn), làm mới token nền tảng, retry idempotency kẹt | Xong |
 | 8 | Notification: log event theo từng agent, SSE `/v1/events/stream`, phát lại `/v1/events?after=` | Xong |
-| 9 đến 11 | Cancel, MCP server, deploy | Chưa làm |
+| 9 | Hủy đơn qua trang xác nhận, `select_shipping_method`, `apply_promotion`, `extend_checkout`, `cancel_checkout`, BR-26 | Xong |
+| 10 và 11 | MCP server, deploy | Chưa làm |
 
 Chạy thử:
 
