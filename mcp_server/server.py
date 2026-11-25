@@ -19,7 +19,9 @@ INSTRUCTIONS = """Shop through UCP for the user. The only platform is "mock", a 
    has confirmed_by_user false, tell the user plainly that it was cancelled without a confirmation page. A paid
    order answers UCP_CONFIRMATION_REQUIRED with details.confirm_url: give it to the user, wait, then call
    cancel_order again. The shop may refuse (UCP_CANNOT_CANCEL).
-6. If a call fails because UCP or the shop did not answer, retry with the idempotency_key named in the error.
+6. Put every link (auth_url, confirm_url, payment_url) alone on its own line, exactly as given: no brackets,
+   quotes, bold or punctuation around it, or the link breaks.
+7. If a call fails because UCP or the shop did not answer, retry with the idempotency_key named in the error.
    Use a new key (leave it out) for a new request."""
 
 READ = ToolAnnotations(readOnlyHint=True)

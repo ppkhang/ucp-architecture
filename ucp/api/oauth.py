@@ -10,6 +10,9 @@ router = APIRouter()
 
 @router.get("/oauth/callback", response_class=HTMLResponse)
 def oauth_callback(request: Request, code: str = "", state: str = "") -> str:
+    # A link written inside brackets or a sentence picks up the punctuation after it. State is the last
+    # parameter, and a real one never ends in any of these.
+    state = state.rstrip(")]}>.,;:!?'\"`* ")
     http = request.app.state.platform_http
     if state.startswith("c_"):
         return trade.confirm_login(state, code, http)
