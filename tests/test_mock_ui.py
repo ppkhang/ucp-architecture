@@ -4,7 +4,7 @@ from tests.test_mock_platform import shop  # noqa: F401  (the fixture)
 
 def test_pages_and_assets_load(shop):
     assert "Mock shop" in shop.get("/").text
-    for path in ("/static/shop.css", "/static/shop.js", "/static/fonts/barlow-400-latin.woff2"):
+    for path in ("/static/shop.css", "/static/shop.js", "/static/fonts/rubik-latin.woff2"):
         assert shop.get(path).status_code == 200
 
 

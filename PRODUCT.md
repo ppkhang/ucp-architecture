@@ -38,7 +38,7 @@ The shop decides. An AI agent can propose a purchase or a cancel through UCP, bu
 ## Brand Commitments
 
 - English UI text.
-- Palette: a light cream palette with purple, blue, orange and gold accents (`#F2E8D0` ground, `#FAF4E4` panel, `#3A3024` text, `#705F4A` muted, `#D9C9A2` and `#BFA978` borders, `#E8D9B0` hover, `#6F4F93` purple with `#E6DBEF`, `#36678A` blue with `#D8E6EE`, `#A86A3C` orange with `#F6E6D3`, `#9A7A2E` gold with `#F3E7BF`). Purple leads.
+- Look: light and purple-led (`#6F4F93`) on white cards over a pale lavender ground. The first cream and brown waybill version was rejected as ugly (2026-11-25). Colors live in `mock_platform/static/shop.css`.
 
 ## Evidence on Hand
 

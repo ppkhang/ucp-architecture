@@ -11,6 +11,7 @@ let login = null; // kept in memory only: a reload signs out
 let myOrders = [];
 const seen = new Map(); // order id -> status, to mark the waybill that just changed
 const drawn = new Map();
+const opened = new Set(); // orders whose details are open, kept across redraws
 
 async function api(path, options) {
   const r = await fetch(path, options);
@@ -40,7 +41,7 @@ const payTag = (o) => ({
 function waybill(o, { owner, changed }) {
   const at = STAGES.findIndex(([key]) => key === o.status);
   const progress = o.status === "cancelled"
-    ? `<div class="void">Cancelled${o.refund_ref ? ", refund started" : ""}</div>`
+    ? (o.refund_ref ? '<p class="void">Refund started</p>' : "")
     : `<ol class="stages">${STAGES.map(([, name], i) =>
         `<li class="${i < at ? "done" : i === at ? "now" : ""}"${i === at ? ' aria-current="step"' : ""}>${name}</li>`).join("")}</ol>`;
   const pay = o.status === "pending_payment" && owner
@@ -53,19 +54,28 @@ function waybill(o, { owner, changed }) {
     moves.push(`<button type="button" class="danger" data-act="status" data-id="${esc(o.id)}" data-status="cancelled">Cancel from the shop</button>`);
   }
   const stub = !owner && moves.length ? `<div class="stub test-only"><strong>Test controls</strong>${moves.join("")}</div>` : "";
+  const first = o.lines[0];
+  const summary = `${first.quantity} x ${first.product_name}${o.lines.length > 1 ? ` and ${o.lines.length - 1} more` : ""}`;
+  const label = o.status === "cancelled" ? "Cancelled" : STAGES[at]?.[1] || o.status;
+  const tone = o.status === "cancelled" ? "bad" : o.status === "pending_payment" ? "wait" : "now";
   return `<article class="waybill${changed ? " stamp-in" : ""}" aria-label="Order ${esc(o.id)}">
-    <div class="wb-head"><div class="route">${esc((o.region || "VN"))}-${esc(o.id.replace("ord_", "").slice(0, 6).toUpperCase())}</div>
-      <div class="amount">${esc(vnd(o.total))}</div></div>
-    <dl class="fields">
-      <div><dt>Buyer</dt><dd>${esc(o.buyer)}</dd></div>
-      <div><dt>Shipping</dt><dd>${esc(o.shipping_method_id || "standard")}, ${esc(vnd(o.shipping_fee))}</dd></div>
-      <div><dt>Payment</dt><dd>${payTag(o)}</dd></div>
-      ${o.discount ? `<div><dt>Discount</dt><dd>${esc(vnd(o.discount))}</dd></div>` : ""}
-      ${o.refund_ref ? `<div><dt>Refund</dt><dd>${esc(o.refund_ref)}</dd></div>` : ""}
-      <div class="test-only"><dt>Order id</dt><dd>${esc(o.id)}</dd></div>
-    </dl>
-    <ul class="items">${o.lines.map((l) =>
-      `<li><span>${esc(l.quantity)} x ${esc(l.product_name)} (${esc(l.name)})</span><span>${esc(vnd(l.amount))}</span></li>`).join("")}</ul>
+    <details data-order="${esc(o.id)}"${opened.has(o.id) ? " open" : ""}>
+      <summary>
+        <span class="what"><strong>${esc(summary)}</strong>
+          <span class="muted">${esc((o.region || "VN"))}-${esc(o.id.replace("ord_", "").slice(0, 6).toUpperCase())}, ${esc(o.buyer)}</span></span>
+        <span class="pill ${tone}">${esc(label)}</span>
+        <span class="amount">${esc(vnd(o.total))}</span>
+      </summary>
+      <ul class="items">${o.lines.map((l) =>
+        `<li><span>${esc(l.quantity)} x ${esc(l.product_name)} (${esc(l.name)})</span><span>${esc(vnd(l.amount))}</span></li>`).join("")}</ul>
+      <dl class="fields">
+        <div><dt>Shipping</dt><dd>${esc(o.shipping_method_id || "standard")}, ${esc(vnd(o.shipping_fee))}</dd></div>
+        <div><dt>Payment</dt><dd>${payTag(o)}</dd></div>
+        ${o.discount ? `<div><dt>Discount</dt><dd>${esc(vnd(o.discount))}</dd></div>` : ""}
+        ${o.refund_ref ? `<div><dt>Refund</dt><dd>${esc(o.refund_ref)}</dd></div>` : ""}
+        <div class="test-only"><dt>Order id</dt><dd>${esc(o.id)}</dd></div>
+      </dl>
+    </details>
     ${progress}${pay}${stub}
   </article>`;
 }
@@ -185,6 +195,10 @@ $("#signin").addEventListener("submit", async (event) => {
 });
 
 window.addEventListener("hashchange", showPage);
+document.addEventListener("toggle", (event) => {
+  const id = event.target.dataset?.order;
+  if (id) event.target.open ? opened.add(id) : opened.delete(id);
+}, true);
 setView((new URLSearchParams(location.search).get("view") || localStorage.getItem("view")) === "testing" ? "testing" : "demo"); // ?view=testing links straight in
 showPage();
 
