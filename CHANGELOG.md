@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-25: Bước 8, notification (hợp đồng API cho event)
+
+### Đổi hợp đồng API (đã được duyệt)
+- `specs/openapi.yaml`, `specs/APISpecs.md`: `GET /events/stream` nhận `Last-Event-ID`, gửi `id:` và `retry:`, và tự đóng khi hết thời hạn hoặc Agent mất quyền. Cả `/events` và `/events/stream` có thêm lỗi 400 và 403 (cần UserLink). Payload đổi trạng thái đơn dùng `status` và `previous`.
+
+### Khác thiết kế
+- Thay cho fanout queue theo từng instance (addendum C5, B13), mỗi stream đọc log của Notification mỗi giây. Nhiều instance vẫn nhận đủ event mà chưa cần broker. Đổi sang LISTEN/NOTIFY hoặc fanout qua broker khi việc đọc lặp trở nên tốn kém. Không đổi ADR hay quy tắc cứng.
+
 ## 2026-11-25: Bỏ khóa bí mật mặc định công khai (rà soát bảo mật 2026-11-24)
 
 ### Sửa

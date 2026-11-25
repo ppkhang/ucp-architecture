@@ -232,6 +232,14 @@ Theo [`docs/UCP_v1.1_Addendum.md`](../docs/UCP_v1.1_Addendum.md) và ADR-006 đ�
 - **cancel_order:** scope `cancel_order`, user xác nhận qua trang xác nhận. Sàn quyết định (`UCP_CANNOT_CANCEL`).
 - **GET /orders/{id}:** thêm `platform_order_ids[]` (một checkout có thể tách thành nhiều đơn theo người bán).
 
+### Event (`/events/stream`, `/events?after={seq}`)
+- Cả hai endpoint cần UserLink (403 `UCP_NO_USER_LINK`). Tham số hoặc `Last-Event-ID` sai trả 400 `UCP_BAD_REQUEST`.
+- Mỗi event: `{ seq, event_id, event_type, payload, occurred_at }`, `seq` tăng theo từng Agent.
+- Payload đổi trạng thái đơn dùng `status` và `previous`, thay cho `new_status` và `old_status` trong ví dụ v1.0.
+- Stream gửi `id: <seq>` và `retry:`. Kết nối lại với header `Last-Event-ID` để nhận tiếp. Không có header thì chỉ nhận event mới.
+- Server đóng stream sau một thời hạn, và khi token hết hạn, Agent bị suspend hoặc đã hủy liên kết.
+- Hiện thực hiện tại: mỗi stream đang mở đọc log của Notification mỗi giây, chưa dùng fanout queue theo từng instance như addendum C5.
+
 ### Mã lỗi mới
 
 | HTTP | Code | Mô tả |
