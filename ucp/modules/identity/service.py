@@ -90,13 +90,13 @@ def start_link(agent_id: str, platform_id: str) -> dict:
     return {"link_id": str(link_id), "auth_url": f"{s.mock_base_url}/oauth/authorize?{query}", "expires_in": LINK_TTL}
 
 
-def platform_login(code: str, http: httpx.Client) -> tuple[str, dict]:
+def platform_login(code: str, http: httpx.Client, client_id: str | None = None) -> tuple[str, dict]:
     """Swap an OAuth code for the platform user id and tokens. The caller decides what to keep."""
     s = get_settings()
     try:
         r = http.post(f"{s.mock_base_url}/oauth/token", data={
             "grant_type": "authorization_code", "code": code, "redirect_uri": f"{s.public_url}/oauth/callback",
-            "client_id": s.mock_client_id, "client_secret": s.mock_client_secret})
+            "client_id": client_id or s.mock_client_id, "client_secret": s.mock_client_secret})
         if r.status_code != 200:
             raise UCPError(ErrorCode.BAD_REQUEST, "platform refused the authorization code")
         tokens = r.json()

@@ -81,3 +81,15 @@ def test_a_user_sees_and_dismisses_only_their_own_alerts(shop):
     assert [a["order_id"] for a in shop.get("/shop/session").json()["alerts"]] == ["ord_khang"]
     assert shop.delete("/shop/alerts").status_code == 204
     assert shop.get("/shop/session").json()["alerts"] == [] and not alerts[1]["seen"]
+
+
+def test_only_the_sign_in_only_client_skips_continue(shop):
+    authorize(shop, **PASSWORD)
+    page = shop.get("/oauth/authorize", params={**ASK, "client_id": "ucp-confirm"}, follow_redirects=False)
+    assert page.status_code == 302 and page.headers["location"].startswith(REDIRECT)
+    linking = shop.get("/oauth/authorize", params=ASK, follow_redirects=False)
+    assert linking.status_code == 200 and "Continue as khang" in linking.text
+    shop.cookies.clear()
+    signed_out = shop.get("/oauth/authorize", params={**ASK, "client_id": "ucp-confirm"}, follow_redirects=False)
+    assert signed_out.status_code == 200 and "type=password" in signed_out.text
+

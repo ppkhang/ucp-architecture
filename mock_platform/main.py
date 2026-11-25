@@ -308,6 +308,8 @@ def create_app(config: Config | None = None) -> FastAPI:
         _check_client(client_id, redirect_uri)
         q = {"client_id": client_id, "redirect_uri": redirect_uri, "state": state}
         s = platform.session(request.cookies.get(COOKIE))
+        if s and platform.clients[client_id].get("sign_in_only"):
+            return _back_to_client(q, s["user"])
         return _continue_form(q, s) if s else _login_form(q)
 
     @app.post("/oauth/authorize")
@@ -418,6 +420,8 @@ def create_app(config: Config | None = None) -> FastAPI:
         c = platform.clients.get(client_id)
         if not c:
             raise PlatformError(404, "NOT_FOUND", "unknown client")
+        if client_id == "ucp" and redirect_uri not in platform.clients["ucp-confirm"]["redirect_uris"]:
+            platform.clients["ucp-confirm"]["redirect_uris"].append(redirect_uri)
         if redirect_uri not in c["redirect_uris"]:
             c["redirect_uris"].append(redirect_uri)
         return {"redirect_uris": c["redirect_uris"]}

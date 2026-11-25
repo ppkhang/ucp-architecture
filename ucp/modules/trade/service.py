@@ -343,7 +343,7 @@ def _login_url(checkout_id: str | None = None, cancel_id: str | None = None) -> 
                      "VALUES (%s, %s, %s, now() + make_interval(secs => %s))",
                      (state, checkout_id, cancel_id, CONFIRM_LOGIN_TTL))
     return f"{s.mock_base_url}/oauth/authorize?" + urlencode(
-        {"client_id": s.mock_client_id, "redirect_uri": f"{s.public_url}/oauth/callback", "state": state})
+        {"client_id": s.mock_confirm_client_id, "redirect_uri": f"{s.public_url}/oauth/callback", "state": state})
 
 
 def start_confirmation(proposal_id: str) -> str:
@@ -393,7 +393,8 @@ def confirm_login(state: str, code: str, http: httpx.Client) -> str:
                            "RETURNING checkout_id, cancel_id", (state,)).fetchone()
     if not row:
         raise UCPError(ErrorCode.BAD_REQUEST, "unknown or expired confirmation request")
-    user, _ = identity.platform_login(code, http)  # the shop's tokens are discarded, only the identity matters
+    # the shop's tokens are discarded, only the identity matters
+    user, _ = identity.platform_login(code, http, get_settings().mock_confirm_client_id)
     wrong_user = UCPError(ErrorCode.FORBIDDEN, "this shop account is not the one linked to the agent")
     if row["cancel_id"]:
         req = _cancel_request(str(row["cancel_id"]))

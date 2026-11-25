@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import httpx
@@ -17,6 +18,8 @@ from ucp.modules.notification import service as notification
 from ucp.modules.notification.router import router as notification_router
 from ucp.modules.trade.router import router as trade_router
 from ucp.workers.loop import run_forever
+
+log = logging.getLogger("ucp.api")
 
 
 @asynccontextmanager
@@ -41,7 +44,9 @@ outbox.HANDLERS.append(notification.record)
 
 
 @app.exception_handler(UCPError)
-async def ucp_error(_: Request, e: UCPError) -> JSONResponse:
+async def ucp_error(request: Request, e: UCPError) -> JSONResponse:
+    # path only: query strings carry sign-in codes (hard rule 13)
+    log.warning("%s %s refused: %s %s", request.method, request.url.path, e.code.value, e.message)
     return JSONResponse(e.body(), status_code=e.status)
 
 

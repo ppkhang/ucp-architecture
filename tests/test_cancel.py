@@ -1,5 +1,6 @@
 """Step 9: cancel_order (UC-03), the checkout intents, BR-26, and refused reconciliation."""
 import re
+from urllib.parse import parse_qsl, urlparse
 
 import httpx
 import pytest
@@ -454,4 +455,30 @@ def test_confirm_and_payment_links_survive_stray_punctuation(ucp, tail):
     request_id = cancel(ucp, auth, order["order_id"]).json()["error"]["details"]["confirm_url"].rsplit("/", 1)[1]
     assert ucp.get(f"/v1/confirm/{request_id}{tail}", follow_redirects=False).status_code == 302
     assert ucp.get("/v1/confirm/not-an-id)", follow_redirects=False).status_code == 400
+
+
+def on_shop(url):
+    """Same host as the test sign-in, so the test client sends the shop cookie."""
+    return urlparse(url)._replace(scheme="", netloc="").geturl()
+
+
+def test_a_signed_in_browser_goes_straight_to_agree_but_cannot_link_that_way(ucp):
+    agent_id, auth = setup(ucp)
+    first, second = checkout(ucp, auth, "co-1"), checkout(ucp, auth, "co-2")
+    user_confirms(ucp, first["checkout_id"])  # signs in at the shop, which remembers the browser
+    to_shop = ucp.get(f"/v1/confirm/{second['checkout_id']}", follow_redirects=False).headers["location"]
+    back = ucp.shop.get(on_shop(to_shop), follow_redirects=False)
+    assert back.status_code == 302  # no Continue click
+    page = ucp.get("/oauth/callback", params=dict(parse_qsl(urlparse(back.headers["location"]).query)))
+    assert page.status_code == 200 and "Agree and confirm" in page.text
+    assert code(confirm_order(ucp, auth, second["checkout_id"])) == "UCP_CONFIRMATION_REQUIRED"  # still needs Agree
+
+    # a stranger rewrites a linking address to the sign-in-only client: the silent code cannot link
+    other, _, other_auth = agent(ucp)
+    url = ucp.post(f"/v1/agents/{other}/links", json={"platform_id": "mock"}, headers=other_auth).json()["auth_url"]
+    silent = ucp.shop.get(on_shop(url.replace("client_id=ucp&", "client_id=ucp-confirm&")), follow_redirects=False)
+    assert silent.status_code == 302
+    r = ucp.get("/oauth/callback", params=dict(parse_qsl(urlparse(silent.headers["location"]).query)))
+    assert (r.status_code, code(r)) == (400, "UCP_BAD_REQUEST")
+    assert ucp.get(f"/v1/agents/{other}/permissions", headers=other_auth).json()["permissions"] == ["read_catalog"]
 

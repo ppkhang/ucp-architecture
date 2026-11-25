@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-25: Trang xác nhận ít bước hơn
+
+- Trình duyệt đã đăng nhập sàn thì link xác nhận mua và hủy đi thẳng tới trang của UCP, không cần bấm Continue. User vẫn phải bấm đồng ý trên trang đó (ADR-007 không đổi).
+- UCP dùng client OAuth riêng `ucp-confirm` cho việc này. Liên kết tài khoản vẫn dùng `ucp` và vẫn phải bấm Continue; code cấp cho `ucp-confirm` không dùng để liên kết được.
+- Link xác nhận và link thanh toán dính dấu ngoặc ở cuối vẫn chạy.
+- API ghi log lý do khi từ chối một request (không ghi query string).
+
 ## 2026-11-25: Hủy đơn chưa thanh toán không cần xác nhận
 
 ### Đổi ADR và hợp đồng (Khang quyết định)
