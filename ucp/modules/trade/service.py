@@ -225,7 +225,8 @@ def _unclaim(checkout_id: Any) -> None:
         conn.execute("UPDATE trade.checkouts SET status = 'open' WHERE id = %s AND status = 'updating'", (checkout_id,))
 
 
-def _change_basket(co: dict, link: dict, adapter: Any, method: str | None, promo: str | None) -> dict:
+def _change_basket(co: dict, link: dict, adapter: Any, method: str | None, promo: str | None,
+                   event: tuple[str, dict] | None = None) -> dict:
     """The platform prices a checkout when it makes it, so a change means a new platform checkout and a new
     snapshot. The user's confirmation was for the old snapshot, so it is dropped."""
     token = link["access_token"]
@@ -255,6 +256,8 @@ def _change_basket(co: dict, link: dict, adapter: Any, method: str | None, promo
             "WHERE id = %s AND status = 'updating' RETURNING id",
             (new["id"], json.dumps(proposal), snapshot_hash(proposal), expires, hold_expires, method, promo,
              co["id"])).fetchone()
+        if saved and event:
+            outbox.emit(conn, "trade", event[0], co["agent_id"], event[1])
     if not saved:  # it expired while the shop was answering
         _release(adapter, token, new["id"])
         raise UCPError(ErrorCode.CHECKOUT_EXPIRED, "this checkout has expired")
@@ -264,12 +267,9 @@ def _change_basket(co: dict, link: dict, adapter: Any, method: str | None, promo
 def select_shipping_method(agent_id: str, raw: dict, http: httpx.Client) -> dict:
     p = parse(ShippingParams, raw)
     co, link, adapter = _claim_open(str(p.checkout_id), agent_id, http)
-    result = _change_basket(co, link, adapter, p.shipping_method_id, co["promo_code"])
-    with connect() as conn:
-        outbox.emit(conn, "trade", "ShippingMethodSelected", agent_id,
-                    {"checkout_id": result["checkout_id"], "platform_id": co["platform_id"],
-                     "shipping_method_id": p.shipping_method_id})
-    return result
+    event = ("ShippingMethodSelected", {"checkout_id": str(co["id"]), "platform_id": co["platform_id"],
+                                        "shipping_method_id": p.shipping_method_id})
+    return _change_basket(co, link, adapter, p.shipping_method_id, co["promo_code"], event)
 
 
 def apply_promotion(agent_id: str, raw: dict, http: httpx.Client) -> dict:
