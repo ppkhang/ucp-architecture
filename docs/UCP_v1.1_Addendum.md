@@ -98,8 +98,9 @@ v1.0 có 4 method: `searchProducts`, `getProduct`, `createCheckout`, `cancelOrde
 | `capabilities()` | Sàn khai báo hỗ trợ gì: giữ hàng, webhook, trang xác nhận do sàn host, COD, hủy một phần | Mới | Cho UCP hành xử đúng với từng sàn |
 | `searchProducts` | Tìm kiếm trực tiếp | Giữ | |
 | `getProduct` | Chi tiết trực tiếp | Giữ | |
-| `getQuote(items, region)` | Giá, tồn kho, phí ship tại thời điểm gọi | Mới | B3 |
-| `createCheckout(items, shipping)` | Checkout trên sàn, tổng tiền cuối, giữ hàng nếu sàn hỗ trợ | Sửa | B2 |
+| `getQuote(items, region, shipping, promo)` | Giá, tồn kho, phí ship, giảm giá tại thời điểm gọi | Mới | B3 |
+| `shippingOptions(region)` | Hình thức giao hàng và phí theo region của sàn | Mới | B17 |
+| `createCheckout(items, region, shipping, promo)` | Checkout trên sàn, tổng tiền cuối, giữ hàng nếu sàn hỗ trợ | Sửa | B2 |
 | `renewHold(checkoutId)`, `releaseHold(checkoutId)` | Điều khiển việc giữ hàng | Mới | B6, B11 |
 | `placeOrder(checkoutId, idempotencyKey)` | Tạo đơn, trả link thanh toán | Mới | B4, B5 |
 | `getOrder(id hoặc idempotencyKey)` | Tra trạng thái, kể cả sau timeout | Mới | B4, B5 |
@@ -248,7 +249,7 @@ Toàn văn ở `docs/adr/ADR-006` đến `ADR-010` và trong ADRsl.docx.
 
 ## C11. Cái giá phải trả
 
-- **Công sức phía sàn tăng.** Adapter tăng từ 4 lên 12 method. Câu "thêm sàn mới chỉ bằng cấu hình" không còn đúng.
+- **Công sức phía sàn tăng.** Adapter tăng từ 4 lên 13 method. Câu "thêm sàn mới chỉ bằng cấu hình" không còn đúng.
 - **N+M trung thực hơn và kém ấn tượng hơn.** Vẫn phải có người viết M adapter, và webhook cần sàn hợp tác. Không có hợp tác thì UCP chỉ đọc được hoặc phải scrape, việc sàn có thể chặn.
 - **Trang xác nhận thêm một bước,** làm giảm câu chuyện "Agent làm hết thay bạn".
 - **Trang dự phòng là mục tiêu phishing** (R-16).

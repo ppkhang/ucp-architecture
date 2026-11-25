@@ -6,6 +6,7 @@
 - `cancel_order`: lỗi `UCP_CONFIRMATION_REQUIRED` mang `details.confirm_url`. Trang `/confirm/{id}` dùng chung cho checkout và yêu cầu hủy; token xác nhận mua không dùng để xác nhận hủy được (ADR-007).
 - `PlatformAdapter`: `createCheckout` và `getQuote` nhận hình thức giao và mã giảm giá; thêm `shippingOptions(region)` (method thứ 13) cho `GET /shipping/options`. Phí và giảm giá luôn do sàn tính (ADR-006).
 - Proposal có thêm `shipping_method_id`.
+- ADR-006 và addendum (mục C2 và phần đánh đổi) cập nhật thành 13 method.
 - BR-26 trả `UCP_QUOTA_EXCEEDED`: 3 checkout đang mở mỗi user mỗi sàn, chờ 10 phút sau 3 lần hết hạn liên tiếp (cấu hình được).
 - Hoàn tiền: chỉ lưu và trả `refund_ref`, chưa theo dõi trạng thái.
 
