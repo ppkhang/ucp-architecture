@@ -439,3 +439,19 @@ def test_out_of_stock_refusal_keeps_its_code_on_retry(ucp):
     ucp.shop.post("/_admin/variants/v_mug", params={"stock": 0})
     for key in ("ord-1", "ord-2"):
         assert code(confirm_order(ucp, auth, co["checkout_id"], key)) == "UCP_INSUFFICIENT_STOCK"
+
+
+@pytest.mark.parametrize("tail", [")", ").", "**"])
+def test_confirm_and_payment_links_survive_stray_punctuation(ucp, tail):
+    _, auth = setup(ucp)
+    co = checkout(ucp, auth)
+    assert ucp.get(f"/v1/confirm/{co['checkout_id']}{tail}", follow_redirects=False).status_code == 302
+    user_confirms(ucp, co["checkout_id"])
+    order = confirm_order(ucp, auth, co["checkout_id"]).json()
+    path = f"/pay/{shop_order(ucp)['id']}{tail}"
+    assert "Pay your order" in ucp.shop.get(path).text
+    pay(ucp, order["payment_url"])
+    request_id = cancel(ucp, auth, order["order_id"]).json()["error"]["details"]["confirm_url"].rsplit("/", 1)[1]
+    assert ucp.get(f"/v1/confirm/{request_id}{tail}", follow_redirects=False).status_code == 302
+    assert ucp.get("/v1/confirm/not-an-id)", follow_redirects=False).status_code == 400
+

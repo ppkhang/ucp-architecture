@@ -1,12 +1,14 @@
 import uuid
+from typing import Annotated
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, BeforeValidator
 from starlette.concurrency import run_in_threadpool
 
 from ucp.common.errors import ErrorCode, UCPError
+from ucp.common.links import trim_link
 from ucp.modules.identity.router import current_agent
 from ucp.modules.trade import cancel, idempotency, service
 
@@ -19,6 +21,9 @@ HANDLERS = {"create_checkout": lambda a, k, p, h: service.create_checkout(a, p, 
             "cancel_checkout": lambda a, k, p, h: service.cancel_checkout(a, p, h),
             "confirm_order": service.confirm_order,
             "cancel_order": cancel.cancel_order}
+
+
+LinkId = Annotated[uuid.UUID, BeforeValidator(trim_link)]  # an id that arrives in a link the user clicked
 
 
 class IntentIn(BaseModel):
@@ -40,7 +45,7 @@ def intent(body: IntentIn, request: Request, agent_id: str = Depends(current_age
 
 
 @router.get("/confirm/{checkout_id}")
-def confirm_page(checkout_id: uuid.UUID) -> RedirectResponse:
+def confirm_page(checkout_id: LinkId) -> RedirectResponse:
     return RedirectResponse(service.start_confirmation(str(checkout_id)), status_code=302)
 
 

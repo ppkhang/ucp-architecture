@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from mock_platform.store import MODES, SESSION_SECONDS, Config, Platform, PlatformError
 
 STATIC = Path(__file__).parent / "static"
+LINK_TAIL = ")]}>.,;:!?'\"`* "  # punctuation a chat can glue to a link
 # Cookies ignore ports, so on localhost the UCP API receives this one too. A real shop has its own domain.
 COOKIE = "mock_shop_session"
 
@@ -232,6 +233,7 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.get("/pay/{order_id}", response_class=HTMLResponse)
     async def pay_page(order_id: str):
+        order_id = order_id.rstrip(LINK_TAIL)
         o = platform.orders.get(order_id)
         if not o:
             return _page("Not found", _waybill("Not found", "<p class=items>No such order.</p>"), 404)
@@ -247,6 +249,7 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.post("/pay/{order_id}")
     async def pay(order_id: str, request: Request):
+        order_id = order_id.rstrip(LINK_TAIL)
         form = parse_qs((await request.body()).decode())
         outcome = form.get("outcome", ["auto"])[0]
         if request.headers.get("accept", "").startswith("application/json"):
