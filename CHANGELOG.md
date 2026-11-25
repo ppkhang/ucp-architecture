@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-25: Bước 10, MCP server
+
+### Thêm
+- `mcp_server/`: một tool cho mỗi intent (7) và 7 tool đọc, gọi UCP API qua HTTP. Dùng MCP Python SDK chính thức 2.x (spec 2026-07-28), phụ thuộc tùy chọn `[mcp]`.
+- Chạy stdio (cục bộ) hoặc Streamable HTTP. HTTP luôn yêu cầu OAuth: một mật khẩu chủ, PKCE, đăng ký client động chỉ cho callback của Claude hoặc ứng dụng trên chính máy người dùng.
+- Mỗi tool intent nhận `idempotency_key` để gửi lại an toàn (quy tắc cứng 4 và 5). Khóa API và token không xuất hiện trong kết quả tool (quy tắc cứng 13).
+
+Không đổi ADR, hợp đồng API hay quy tắc cứng.
+
 ## 2026-11-25: Bước 9, hủy đơn và các intent còn lại
 
 ### Đổi hợp đồng (đã được duyệt)
