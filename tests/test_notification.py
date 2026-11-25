@@ -102,9 +102,13 @@ def test_stream_delivers_an_event_recorded_while_it_is_open(ucp, monkeypatch):
         calls.append(1)
         if len(calls) == 2:  # as if written by another instance: only the database is shared
             service.record(event(a, 7))
+        if len(calls) == 3:  # ends the stream without relying on timing
+            with connect() as conn:
+                conn.execute("UPDATE identity.agents SET status = 'suspended' WHERE id = %s", (a,))
         return real(*args)
 
     monkeypatch.setattr(service, "events_after", later)
+    monkeypatch.setattr(get_settings(), "sse_max_seconds", 10)
     assert [e["payload"]["n"] for e in stream(ucp, auth)] == [7]
 
 
