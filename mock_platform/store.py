@@ -368,6 +368,7 @@ class Platform:
             "lines": lines, "subtotal": price["subtotal"], "shipping_fee": price["shipping_fee"],
             "discount": price["discount"], "total": price["total"],
             "idempotency_key": key, "refund_ref": None,
+            "region": co.region, "shipping_method_id": co.shipping_method_id,
             "created_at": self.iso(self.now()),
             "_deadline": self.now() + timedelta(seconds=self.config.payment_deadline_seconds),
             "_items": co.items,
@@ -392,6 +393,24 @@ class Platform:
         if key not in self.order_keys:
             raise PlatformError(404, "NOT_FOUND", "no order for this key")
         return self.get_order(user, self.order_keys[key][0])
+
+    def ui_order(self, o: dict[str, Any]) -> dict[str, Any]:
+        """An order as the shop's own pages show it."""
+        lines = [{**ln, "product_name": self.products[self.variants[ln["variant_id"]].product_id]["name"]}
+                 for ln in o["lines"]]
+        return {**self.order_view(o), "lines": lines, "buyer": o["user"]}
+
+    def snapshot(self) -> dict[str, Any]:
+        """Everything the control panel draws, newest order first."""
+        return {
+            "config": {"mode": self.config.mode},
+            "orders": [self.ui_order(o) for o in reversed(list(self.orders.values()))],
+            "products": [{**p, "variants": [
+                {"id": v.id, "name": v.name, "price": v.price, "stock": v.stock, "reserved": v.reserved}
+                for v in self.variants.values() if v.product_id == p["id"]]} for p in self.products.values()],
+            "events": self.events[-50:],
+            "refunds": list(self.refunds.values()),
+        }
 
     # -- payment ---------------------------------------------------------
 
