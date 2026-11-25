@@ -10,7 +10,7 @@ from ucp.common.db import connect
 
 log = logging.getLogger("ucp.outbox")
 SCHEMAS = ("trade",)  # one outbox per context that emits events; table names below come from this list only
-HANDLERS: list[Callable[[dict[str, Any]], None]] = []  # consumers register here (step 8). They must dedupe on event["id"].
+HANDLERS: list[Callable[[dict[str, Any]], None]] = []  # consumers register here. They must dedupe on event["id"].
 
 
 def emit(conn: Any, schema: str, type_: str, agent_id: Any, payload: dict[str, Any]) -> None:
@@ -23,13 +23,18 @@ def emit(conn: Any, schema: str, type_: str, agent_id: Any, payload: dict[str, A
 def relay(batch: int = 50) -> int:
     """Deliver pending events in order. A failing consumer leaves the event pending and counts an attempt.
 
+    One relay per schema at a time, so a second instance cannot deliver later events ahead of earlier ones.
+
     shortcut: handlers run inside the claiming transaction, so they must be fast and local; a poison event blocks
-    its queue, add a dead-letter after N attempts when a real consumer exists."""
+    its queue (the only consumer is a local insert), add a dead-letter after N attempts when one can fail for good."""
     if not HANDLERS:
         return 0  # nobody is listening yet: keep the events so a consumer added later still gets them
     delivered = 0
     for schema in SCHEMAS:
         with connect() as conn:
+            if not conn.execute("SELECT pg_try_advisory_xact_lock(hashtext(%s)) AS ok",
+                                (f"outbox.{schema}",)).fetchone()["ok"]:
+                continue  # another instance is relaying
             rows = conn.execute(f"SELECT id, type, agent_id, payload, created_at FROM {schema}.outbox "
                                 "WHERE delivered_at IS NULL ORDER BY seq LIMIT %s FOR UPDATE SKIP LOCKED",
                                 (batch,)).fetchall()

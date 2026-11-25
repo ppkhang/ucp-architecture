@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     mock_client_secret: str = "ucp-mock-secret"
     mock_webhook_secret: str = "mock-webhook-secret"  # same default as the mock shop
     workers_interval_seconds: float = 0  # 0 = background workers off (tests call them directly)
+    sse_poll_seconds: float = 1
+    sse_max_seconds: float = 300  # an event stream closes after this and the client reconnects
     sync_min_age_seconds: int = 30  # an order is not polled or reconciled sooner than this after its last touch
     checkout_ttl_seconds: int = 1800  # 30 minutes, v1.0 BR-14 (addendum B6)
 

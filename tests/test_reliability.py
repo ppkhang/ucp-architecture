@@ -41,7 +41,9 @@ def test_relay_keeps_events_until_a_consumer_exists_then_delivers_in_order(ucp, 
     pay(ucp, order["payment_url"])
     ucp.shop.post("/_admin/orders/" + ucp.shop.app.state.platform.orders.__iter__().__next__() + "/status",
                   params={"status": "processing"})  # a second event
-    assert outbox.relay() == 0  # no consumer yet: nothing is marked delivered
+    with monkeypatch.context() as m:
+        m.setattr(outbox, "HANDLERS", [])
+        assert outbox.relay() == 0  # no consumer: nothing is marked delivered
     seen = []
     monkeypatch.setattr(outbox, "HANDLERS", [lambda e: seen.append((e["type"], e["id"]))])
     assert outbox.relay() == 2

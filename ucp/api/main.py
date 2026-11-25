@@ -6,12 +6,15 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from ucp import outbox
 from ucp.common.config import get_settings
 from ucp.common.db import apply_schemas
 from ucp.common.errors import ErrorCode, UCPError
 from ucp.modules.catalog.router import router as catalog_router
 from ucp.api.oauth import router as oauth_router
 from ucp.modules.identity.router import router as identity_router
+from ucp.modules.notification import service as notification
+from ucp.modules.notification.router import router as notification_router
 from ucp.modules.trade.router import router as trade_router
 from ucp.workers.loop import run_forever
 
@@ -33,6 +36,8 @@ app.include_router(identity_router)
 app.include_router(catalog_router)
 app.include_router(trade_router)
 app.include_router(oauth_router)
+app.include_router(notification_router)
+outbox.HANDLERS.append(notification.record)
 
 
 @app.exception_handler(UCPError)
