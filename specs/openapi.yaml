@@ -443,13 +443,21 @@ paths:
       tags: [events]
       operationId: streamEvents
       summary: Server-sent events for the agent. Best effort, the log is the truth.
+      description: |
+        Needs a UserLink. Each message has `id: <seq>` and one `data:` line; `retry:` sets the reconnect delay.
+        The server closes the stream after a time limit, and when the token expires, the agent is suspended
+        or the account is unlinked. Reconnect with a valid token and `Last-Event-ID` to resume.
+      parameters:
+        - { name: Last-Event-ID, in: header, required: false, schema: { type: string, pattern: "^[0-9]{1,18}$" }, description: "Resume after this per-agent seq. Without it, only new events are sent." }
       responses:
         "200":
           description: SSE stream. Each data line is an Event as JSON.
           content:
             text/event-stream:
               schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
 
   /events:
     get:
@@ -471,7 +479,9 @@ paths:
                   events:
                     type: array
                     items: { $ref: "#/components/schemas/Event" }
+        "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
 
   /confirm/{proposal_id}:
     get:
@@ -870,5 +880,5 @@ components:
         seq: { type: integer, description: Per-agent sequence number }
         event_id: { type: string, format: uuid }
         event_type: { type: string, example: OrderPlaced }
-        payload: { type: object, additionalProperties: true }
+        payload: { type: object, additionalProperties: true, description: "Ids and statuses only. An order status change carries order_id, platform_id, status and previous." }
         occurred_at: { $ref: "#/components/schemas/Timestamp" }
