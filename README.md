@@ -47,7 +47,7 @@ v1.1 là thiết kế sau bảo vệ, không thuộc báo cáo đã nộp. Đang
 
 ## Hiện thực v1.1 (đang xây)
 
-> **Đang xây, chưa dùng được thật.** Bước 1 đến 9 xong, bước 10 còn phần demo, bước 11 chưa làm. Chỉ chạy với sàn giả (`mock_platform/`), chưa có sàn thật. Nối với Claude: xem phần MCP server bên dưới.
+> **Đang xây, chưa dùng được thật.** Bước 1 đến 10 xong, bước 11 chưa làm. Chỉ chạy với sàn giả (`mock_platform/`), chưa có sàn thật. Nối với Claude: xem phần MCP server bên dưới.
 
 Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bước). Python 3.12, FastAPI, modular monolith.
 
@@ -62,7 +62,7 @@ Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bư�
 | 7 | Độ tin cậy: outbox, ExpiryWorker, OrderSyncWorker (đối soát + poll đơn), làm mới token nền tảng, retry idempotency kẹt | Xong |
 | 8 | Notification: log event theo từng agent, SSE `/v1/events/stream`, phát lại `/v1/events?after=` | Xong |
 | 9 | Hủy đơn (đơn đã trả tiền qua trang xác nhận; bấm đồng ý là thực hiện luôn), `select_shipping_method`, `apply_promotion`, `extend_checkout`, `cancel_checkout`, BR-26 | Xong |
-| 10 | MCP server (`mcp_server/`): 14 tool, stdio và Streamable HTTP có OAuth | Đã chạy cục bộ; chưa demo qua custom connector |
+| 10 | MCP server (`mcp_server/`): 14 tool, stdio và Streamable HTTP có OAuth | Xong. Đã thử trong Claude chat qua custom connector; thay đổi cuối (bấm đồng ý là thực hiện luôn) mới qua test tự động |
 | 11 | Deploy | Chưa làm |
 
 Chạy thử:
