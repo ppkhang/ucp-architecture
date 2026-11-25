@@ -229,11 +229,14 @@ Theo [`docs/UCP_v1.1_Addendum.md`](../docs/UCP_v1.1_Addendum.md) và ADR-006 đ�
 ### Thay đổi endpoint hiện có
 - **create_checkout:** response thêm `confirm_url` và `hold_expires_at` (null nếu sàn không giữ hàng). `expires_at` = thời điểm sớm hơn giữa TTL checkout và hạn giữ hàng.
 - **confirm_order:** cần bản ghi xác nhận của user, thiếu thì trả `UCP_CONFIRMATION_REQUIRED`. Response: `{ order_id, status: "pending_payment", payment_url }`. `placed` đến sau qua event `OrderPlaced`.
-- **cancel_order:** scope `cancel_order`, user xác nhận qua trang xác nhận. Sàn quyết định (`UCP_CANNOT_CANCEL`).
+- **cancel_order:** scope `cancel_order`, user xác nhận qua trang xác nhận (trừ đơn chưa thanh toán, xem dưới). Sàn quyết định (`UCP_CANNOT_CANCEL`).
 - **GET /orders/{id}:** thêm `platform_order_ids[]` (một checkout có thể tách thành nhiều đơn theo người bán).
 
 ### Hủy đơn, thay đổi checkout, BR-26
-- `cancel_order` khi user chưa đồng ý: 403 `UCP_CONFIRMATION_REQUIRED`, `details` có `confirm_url` và `expires_at`. User mở link, đăng nhập sàn, đồng ý, rồi Agent gọi lại `cancel_order`. Kết quả: `{ order_id, status: "cancelled", refund_ref }`. UCP chỉ lưu `refund_ref`, chưa theo dõi trạng thái hoàn tiền.
+- User bấm đồng ý trên trang xác nhận thì UCP thực hiện ngay (ADR-007). `POST /confirm/{id}`: mua trả 303 sang `payment_url`; hủy trả trang kết quả; không làm được thì trả trang nói rõ lý do với mã lỗi tương ứng. `confirm_order` và `cancel_order` của Agent trả lại kết quả đó; sau khi sàn từ chối hủy thì trả `UCP_CANNOT_CANCEL`.
+- Kết quả `cancel_order` có `order_url`: trang đơn hàng của sàn, Agent đưa cho user (null nếu không hỏi được sàn).
+- Đơn **chưa thanh toán** (`pending_payment`, thanh toán `pending` hoặc `failed`) được hủy ngay, không cần trang xác nhận; kết quả có thêm `confirmed_by_user: false` và sàn báo cho user. Sàn kiểm tra "chưa thanh toán" và hủy trong cùng một bước (`cancelOrder(..., onlyIfUnpaid)`).
+- Đơn đã hoặc đang thanh toán: `cancel_order` khi user chưa đồng ý: 403 `UCP_CONFIRMATION_REQUIRED`, `details` có `confirm_url` và `expires_at`. User mở link, đăng nhập sàn, đồng ý, rồi Agent gọi lại `cancel_order`. Kết quả: `{ order_id, status: "cancelled", refund_ref }`. UCP chỉ lưu `refund_ref`, chưa theo dõi trạng thái hoàn tiền.
 - `GET /confirm/{proposal_id}` dùng chung cho checkout và yêu cầu hủy.
 - `select_shipping_method`, `apply_promotion`: sàn báo giá lại bằng một checkout mới, xác nhận cũ bị bỏ, hạn checkout không tăng. Proposal có thêm `shipping_method_id`.
 - `extend_checkout`: một lần, không vượt hạn giữ hàng.

@@ -48,3 +48,12 @@ def seed_data(p: "Platform") -> None:
         "secret": "ucp-mock-secret",
         "redirect_uris": ["http://localhost:8000/oauth/callback"],
     }
+    # UCP's confirmation page only asks who is there, and has its own Agree button. So a signed-in browser goes
+    # straight back. This must never apply to "ucp": that one links accounts, and Continue is the user's consent.
+    # A code belongs to the client that asked, so a code issued here cannot link anything.
+    p.clients["ucp-confirm"] = {
+        "id": "ucp-confirm",
+        "secret": "ucp-mock-secret",
+        "redirect_uris": ["http://localhost:8000/oauth/callback"],
+        "sign_in_only": True,
+    }

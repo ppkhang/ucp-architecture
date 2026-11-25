@@ -1,14 +1,16 @@
 import uuid
+from typing import Annotated
 from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, BeforeValidator
 from starlette.concurrency import run_in_threadpool
 
 from ucp.common.errors import ErrorCode, UCPError
+from ucp.common.links import trim_link
 from ucp.modules.identity.router import current_agent
-from ucp.modules.trade import cancel, idempotency, service
+from ucp.modules.trade import agreed, cancel, idempotency, service
 
 router = APIRouter(prefix="/v1")
 
@@ -19,6 +21,9 @@ HANDLERS = {"create_checkout": lambda a, k, p, h: service.create_checkout(a, p, 
             "cancel_checkout": lambda a, k, p, h: service.cancel_checkout(a, p, h),
             "confirm_order": service.confirm_order,
             "cancel_order": cancel.cancel_order}
+
+
+LinkId = Annotated[uuid.UUID, BeforeValidator(trim_link)]  # an id that arrives in a link the user clicked
 
 
 class IntentIn(BaseModel):
@@ -40,14 +45,22 @@ def intent(body: IntentIn, request: Request, agent_id: str = Depends(current_age
 
 
 @router.get("/confirm/{checkout_id}")
-def confirm_page(checkout_id: uuid.UUID) -> RedirectResponse:
+def confirm_page(checkout_id: LinkId) -> RedirectResponse:
     return RedirectResponse(service.start_confirmation(str(checkout_id)), status_code=302)
 
 
 @router.post("/confirm/{checkout_id}", response_class=HTMLResponse)
-async def confirm_submit(checkout_id: uuid.UUID, request: Request) -> str:
+async def confirm_submit(checkout_id: uuid.UUID, request: Request) -> Response:
+    """The user pressed Agree: record it, then do it."""
     form = parse_qs((await request.body()).decode())
-    return await run_in_threadpool(service.record_confirmation, str(checkout_id), form.get("token", [""])[0])
+    http = request.app.state.platform_http
+
+    def agree() -> tuple[int, str, str | None]:
+        service.record_confirmation(str(checkout_id), form.get("token", [""])[0])  # refuses a bad or foreign token
+        return agreed.finish(str(checkout_id), http)
+
+    status, page, go_to = await run_in_threadpool(agree)
+    return RedirectResponse(go_to, status_code=303) if go_to else HTMLResponse(page, status_code=status)
 
 
 @router.get("/shipping/options")

@@ -1,5 +1,6 @@
 """Step 4: identity against a real Postgres and the mock shop's OAuth."""
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 import jwt
 import pytest
 from cryptography.fernet import Fernet
@@ -130,3 +131,17 @@ def test_unknown_platform_and_bad_body(ucp):
     assert r.json()["error"]["code"] == "UCP_NOT_FOUND"
     r = ucp.post("/v1/agents", json={})
     assert (r.status_code, r.json()["error"]["code"]) == (400, "UCP_BAD_REQUEST")
+
+
+@pytest.mark.parametrize("tail", [")", ").", "**", "]"])
+def test_punctuation_stuck_to_a_link_does_not_break_the_sign_in(ucp, tail):
+    agent_id, _, auth = agent(ucp)
+    url = ucp.post(f"/v1/agents/{agent_id}/links", json={"platform_id": "mock"}, headers=auth).json()["auth_url"]
+    q = {k: v[0] for k, v in parse_qs(urlparse(url + tail).query).items()}
+    assert q["state"].endswith(tail)
+    login = ucp.shop.post("/oauth/authorize", data={**q, "username": "khang", "password": "khang123"},
+                          follow_redirects=False)
+    back = {k: v[0] for k, v in parse_qs(urlparse(login.headers["location"]).query).items()}
+    assert ucp.get("/oauth/callback", params=back).status_code == 200
+    assert "create_order" in perms(ucp, agent_id, auth)
+

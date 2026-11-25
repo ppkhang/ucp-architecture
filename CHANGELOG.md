@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-11-25: Bấm đồng ý là thực hiện luôn
+
+### Đổi ADR và luồng (Khang quyết định)
+- ADR-007 sửa đổi: bấm đồng ý trên trang xác nhận thì UCP đặt đơn (rồi chuyển sang trang thanh toán) hoặc hủy đơn ngay. `confirm_order` và `cancel_order` của Agent trả lại kết quả đó.
+- Sau khi sàn từ chối hủy, `cancel_order` trả `UCP_CANNOT_CANCEL` thay vì đòi xác nhận lại.
+- Cập nhật addendum C3, `specs/APISpecs.md`, `specs/openapi.yaml`.
+
+## 2026-11-25: Claude tự chờ user xác nhận
+
+- Tool MCP `confirm_order` và `cancel_order` có `wait_for_user`, `get_order` có `wait_for_payment`: lời gọi được giữ tối đa 50 giây và hoàn tất ngay khi user đồng ý hoặc trả tiền, nên user không phải báo lại cho Agent (BR-23). UCP vẫn kiểm tra xác nhận ở mỗi lần gọi.
+- Không đổi UCP API.
+
+## 2026-11-25: Link đơn đã hủy
+
+- `cancel_order` trả thêm `order_url`, trang đơn hàng của sàn. Tool MCP yêu cầu Claude đưa link này cho user sau mỗi lần hủy.
+- Shop giả có trang `GET /order/{id}`: trạng thái, món hàng và tiền hoàn.
+
+## 2026-11-25: Trang xác nhận ít bước hơn
+
+- Trình duyệt đã đăng nhập sàn thì link xác nhận mua và hủy đi thẳng tới trang của UCP, không cần bấm Continue. User vẫn phải bấm đồng ý trên trang đó (ADR-007 không đổi).
+- UCP dùng client OAuth riêng `ucp-confirm` cho việc này. Liên kết tài khoản vẫn dùng `ucp` và vẫn phải bấm Continue; code cấp cho `ucp-confirm` không dùng để liên kết được.
+- Link xác nhận và link thanh toán dính dấu ngoặc ở cuối vẫn chạy.
+- API ghi log lý do khi từ chối một request (không ghi query string).
+
+## 2026-11-25: Hủy đơn chưa thanh toán không cần xác nhận
+
+### Đổi ADR và hợp đồng (Khang quyết định)
+- ADR-007 sửa đổi: `cancel_order` trên đơn chưa thanh toán hủy ngay, trả `confirmed_by_user: false`, và sàn báo cho user. Đơn đã hoặc đang thanh toán vẫn cần trang xác nhận.
+- `PlatformAdapter.cancelOrder` nhận `onlyIfUnpaid`; sàn kiểm tra và hủy trong cùng một bước để không hủy nhầm đơn vừa trả tiền.
+- Shop giả: lưu thông báo cho user, hiện ở "My orders" và số đếm trên tab.
+- Cập nhật `specs/openapi.yaml`, `specs/APISpecs.md`, addendum (C2, C6). Mô tả tool MCP cập nhật theo.
+
+## 2026-11-25: Shop giả nhớ đăng nhập
+
+- `mock_platform`: sau khi đăng nhập, trình duyệt được nhớ 1 giờ bằng cookie (HttpOnly, SameSite=Lax). Trang xác nhận hiện "Continue as <user>" thay vì hỏi lại mật khẩu, có nút đổi tài khoản. Nút Continue cần token chống CSRF, trang không cho nhúng khung. "My orders" dùng `GET/POST/DELETE /shop/session` thay cho `POST /shop/my-orders`, không còn giữ mật khẩu trong trang.
+- Không đổi UCP hay hợp đồng API. User vẫn phải bấm đồng ý trên trang xác nhận của UCP cho mỗi lần mua và hủy.
+
+## 2026-11-25: Bước 10, MCP server
+
+### Thêm
+- `mcp_server/`: một tool cho mỗi intent (7) và 7 tool đọc, gọi UCP API qua HTTP. Dùng MCP Python SDK chính thức 2.x (spec 2026-07-28), phụ thuộc tùy chọn `[mcp]`.
+- Chạy stdio (cục bộ) hoặc Streamable HTTP. HTTP luôn yêu cầu OAuth: một mật khẩu chủ, PKCE, đăng ký client động chỉ cho callback của Claude hoặc ứng dụng trên chính máy người dùng.
+- Mỗi tool intent nhận `idempotency_key` để gửi lại an toàn (quy tắc cứng 4 và 5). Khóa API và token không xuất hiện trong kết quả tool (quy tắc cứng 13).
+
+Không đổi ADR, hợp đồng API hay quy tắc cứng.
+
 ## 2026-11-25: Bước 9, hủy đơn và các intent còn lại
 
 ### Đổi hợp đồng (đã được duyệt)

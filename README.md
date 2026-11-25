@@ -47,7 +47,7 @@ v1.1 là thiết kế sau bảo vệ, không thuộc báo cáo đã nộp. Đang
 
 ## Hiện thực v1.1 (đang xây)
 
-> **Đang xây, chưa dùng được thật.** Bước 1 đến 9 xong, bước 10 và 11 chưa làm. Chỉ chạy với sàn giả (`mock_platform/`), chưa có sàn thật, chưa có MCP server nên chưa nối được với Claude.
+> **Đang xây, chưa dùng được thật.** Bước 1 đến 10 xong, bước 11 chưa làm. Chỉ chạy với sàn giả (`mock_platform/`), chưa có sàn thật. Nối với Claude: xem phần MCP server bên dưới.
 
 Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bước). Python 3.12, FastAPI, modular monolith.
 
@@ -61,8 +61,9 @@ Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bư�
 | 6 | Trade: tạo checkout, trang xác nhận của user, `confirm_order`, webhook, đơn `placed` (lát cắt đầu tiên từ đầu đến cuối) | Xong |
 | 7 | Độ tin cậy: outbox, ExpiryWorker, OrderSyncWorker (đối soát + poll đơn), làm mới token nền tảng, retry idempotency kẹt | Xong |
 | 8 | Notification: log event theo từng agent, SSE `/v1/events/stream`, phát lại `/v1/events?after=` | Xong |
-| 9 | Hủy đơn qua trang xác nhận, `select_shipping_method`, `apply_promotion`, `extend_checkout`, `cancel_checkout`, BR-26 | Xong |
-| 10 và 11 | MCP server, deploy | Chưa làm |
+| 9 | Hủy đơn (đơn đã trả tiền qua trang xác nhận; bấm đồng ý là thực hiện luôn), `select_shipping_method`, `apply_promotion`, `extend_checkout`, `cancel_checkout`, BR-26 | Xong |
+| 10 | MCP server (`mcp_server/`): 14 tool, stdio và Streamable HTTP có OAuth | Xong. Đã thử trong Claude chat qua custom connector; thay đổi cuối (bấm đồng ý là thực hiện luôn) mới qua test tự động |
+| 11 | Deploy | Chưa làm |
 
 Chạy thử:
 
@@ -81,7 +82,37 @@ pytest   # cần Postgres chạy (docker compose up -d postgres)
 
 Compose không khởi động nếu thiếu `JWT_SECRET` hoặc `TOKEN_KEY`: hai khóa này không có giá trị mặc định công khai nữa. Chạy ngoài compose mà không đặt thì mỗi lần khởi động tự sinh khóa mới, nên token và tài khoản đã liên kết mất hiệu lực sau mỗi lần chạy lại. Luồng liên kết tài khoản chưa chạy được bên trong compose (api cần tách địa chỉ nội bộ và địa chỉ công khai của sàn giả); toàn bộ luồng mua hàng đã chạy đủ bằng `pytest` và uvicorn.
 
-Cấu trúc: `ucp/` (API), `mock_platform/` (sàn giả), `specs/openapi.yaml` (hợp đồng API), `deploy/` (compose), `tests/`.
+### MCP server (nối Claude với UCP)
+
+Chạy UCP trên máy (không qua compose). Đặt `JWT_SECRET` và `TOKEN_KEY` trong `.env` ở thư mục gốc, bật Postgres, rồi mở 2 terminal (PowerShell):
+
+```powershell
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d postgres
+$env:MOCK_WEBHOOK_URL="http://127.0.0.1:8000/v1/platform-events/mock"; .venv\Scripts\python -m uvicorn mock_platform.main:app --port 9000
+$env:WORKERS_INTERVAL_SECONDS="2"; .venv\Scripts\python -m uvicorn ucp.api.main:app --port 8000
+```
+
+`WORKERS_INTERVAL_SECONDS` phải lớn hơn 0 thì event mới đến Agent. Cài và tạo Agent một lần (ghi dòng `UCP_API_KEY=...` in ra vào `.env`):
+
+```powershell
+.venv\Scripts\python -m pip install -e ".[dev,mcp]"
+.venv\Scripts\python -m mcp_server register
+```
+
+**Cục bộ (stdio), cho Claude Code.** Chạy ở thư mục gốc của repo:
+
+```powershell
+claude mcp add ucp --env UCP_API_KEY=<khóa> -- D:\VSCode\UCP\.venv\Scripts\python.exe -m mcp_server
+```
+
+**Custom connector (HTTP + OAuth).** Connector gọi từ máy chủ của Anthropic nên cần địa chỉ HTTPS công khai. Chỉ MCP server cần công khai; UCP, sàn giả và trang xác nhận vẫn ở `localhost` (mở trên chính máy này).
+
+1. Mở tunnel: `cloudflared tunnel --url http://127.0.0.1:8765`, lấy địa chỉ `https://….trycloudflare.com`.
+2. Đặt `MCP_PUBLIC_URL` (địa chỉ đó) và `MCP_OWNER_PASSWORD` (từ 12 ký tự) trong `.env`, chạy `.venv\Scripts\python -m mcp_server http`.
+3. Trong Claude, thêm custom connector với URL `<địa chỉ>/mcp`, đăng nhập bằng mật khẩu chủ.
+4. Demo xong thì tắt tunnel. Server giữ đăng nhập trong bộ nhớ: khởi động lại thì phải thêm connector lại.
+
+Cấu trúc: `ucp/` (API), `mock_platform/` (sàn giả), `mcp_server/` (MCP), `specs/openapi.yaml` (hợp đồng API), `deploy/` (compose), `tests/`.
 
 ## Deliverables
 

@@ -29,6 +29,8 @@ CANCELLABLE = {"pending_payment", "placed", "processing"}
 
 SHIPPING_FEES = {"HCM": 20_000, "HN": 25_000}
 DEFAULT_SHIPPING_FEE = 35_000
+UNPAID = ("pending", "failed")  # payment statuses where no money has moved or is moving
+SESSION_SECONDS = 3600  # how long the shop remembers a browser
 # method id -> (name, surcharge on the region fee, days to arrive)
 SHIPPING_METHODS = {"standard": ("Standard", 0, 3), "express": ("Express", 30_000, 1)}
 # code -> (VND off the subtotal, smallest subtotal it applies to)
@@ -130,6 +132,8 @@ class Platform:
         self.codes: dict[str, dict[str, Any]] = {}
         self.tokens: dict[str, dict[str, Any]] = {}
         self.refresh_tokens: dict[str, dict[str, Any]] = {}
+        self.sessions: dict[str, dict[str, Any]] = {}  # browser sign-ins
+        self.alerts: list[dict[str, Any]] = []  # what the shop tells a user; a real shop would also email
         self.sender: Callable[[dict, dict[str, str], bytes], None] | None = None
 
     def now(self) -> datetime:
@@ -381,6 +385,7 @@ class Platform:
         view = {k: v for k, v in o.items() if not k.startswith("_") and k != "user"}
         view["payment_deadline"] = self.iso(o["_deadline"])
         view["payment_url"] = f"{self.config.base_url}/pay/{o['id']}" if o["status"] == "pending_payment" else None
+        view["order_url"] = f"{self.config.base_url}/order/{o['id']}"
         return view
 
     def get_order(self, user: str, order_id: str) -> dict[str, Any]:
@@ -454,7 +459,9 @@ class Platform:
 
     # -- cancel and refund -----------------------------------------------
 
-    def cancel_order(self, user: str, order_id: str, key: str) -> dict[str, Any]:
+    def cancel_order(self, user: str, order_id: str, key: str, only_if_unpaid: bool = False) -> dict[str, Any]:
+        """only_if_unpaid: the caller did not ask the user, so refuse unless no money has moved. The check and the
+        cancel are one step, so a payment cannot slip in between. The user gets an alert."""
         if key in self.cancel_keys:
             if self.cancel_keys[key] != order_id:
                 raise PlatformError(422, "IDEMPOTENCY_CONFLICT", "key already used for another order")
@@ -463,7 +470,12 @@ class Platform:
         o = self.get_order(user, order_id)
         if o["status"] not in CANCELLABLE:
             raise PlatformError(409, "CANNOT_CANCEL", f"order is {o['status']}")
-        self._cancel(o, reason="user")
+        if only_if_unpaid and not (o["status"] == "pending_payment" and o["payment_status"] in UNPAID):
+            raise PlatformError(409, "ORDER_PAID", "the order is paid or being paid, the user has to agree")
+        self._cancel(o, reason="assistant_unpaid" if only_if_unpaid else "user")
+        if only_if_unpaid:
+            self.alerts.append({"user": user, "order_id": order_id, "total": o["total"],
+                                "created_at": self.iso(self.now()), "seen": False})
         self.cancel_keys[key] = order_id
         return {"order": self.order_view(o), "refund_ref": o["refund_ref"]}
 
@@ -496,6 +508,19 @@ class Platform:
     def login(self, username: str, password: str) -> str | None:
         u = self.users.get(username)
         return username if u and secrets.compare_digest(u["password"], password) else None
+
+    def start_session(self, user: str) -> str:
+        sid = secrets.token_urlsafe(32)
+        self.sessions[sid] = {"user": user, "csrf": secrets.token_urlsafe(24),
+                              "expires": self.now() + timedelta(seconds=SESSION_SECONDS)}
+        return sid
+
+    def session(self, sid: str | None) -> dict[str, Any] | None:
+        s = self.sessions.get(sid or "")
+        return s if s and s["expires"] > self.now() else None
+
+    def end_session(self, sid: str | None) -> None:
+        self.sessions.pop(sid or "", None)
 
     def issue_code(self, user: str, client_id: str, redirect_uri: str) -> str:
         code = secrets.token_urlsafe(24)

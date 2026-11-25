@@ -283,6 +283,7 @@ paths:
         UCP_IDEMPOTENCY_CONFLICT (ADR-010).
         Needed scope: create_order for the checkout methods and confirm_order, cancel_order for cancel_order.
         confirm_order and cancel_order need a valid user confirmation (ADR-007), else UCP_CONFIRMATION_REQUIRED.
+        Exception: cancel_order on an order that is not paid needs none; the platform alerts the user.
         For cancel_order that error carries details.confirm_url and details.expires_at: send the user there,
         then call cancel_order again. select_shipping_method and apply_promotion make a new quote at the
         platform and drop any earlier confirmation. extend_checkout works once and never past the platform's hold.
@@ -496,6 +497,7 @@ paths:
       summary: Fallback confirmation page (HTML), ADR-007
       description: |
         proposal_id names a checkout, or the cancel request from cancel_order's confirm_url.
+        When the user agrees on this page, UCP places or cancels the order at once (ADR-007).
         The user signs in with the platform account. The signed-in user must match the UserLink.
         The page shows UCP's stored proposal snapshot, never anything the agent sent.
         The confirmation is bound to the proposal hash, user, agent and expiry, and is single use.
@@ -844,6 +846,12 @@ components:
         order_id: { type: string, format: uuid }
         status: { const: cancelled }
         refund_ref: { type: [string, "null"] }
+        order_url:
+          type: [string, "null"]
+          description: The platform's page for the order. Null if the platform could not be asked.
+        confirmed_by_user:
+          type: boolean
+          description: Present and false when an unpaid order was cancelled without the confirmation page.
 
     OrderStatus:
       type: string

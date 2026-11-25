@@ -41,3 +41,24 @@ OTP thanh toán trên app sàn là cửa thứ hai nhưng không áp dụng cho 
 - **Tích cực:** BR-16 được thực thi thật. COD được bảo vệ như các phương thức khác. Chặn được việc Agent hiển thị một thứ nhưng xác nhận thứ khác.
 - **Tiêu cực:** Thêm một bước cho user. Trang dự phòng là mục tiêu phishing, giảm thiểu bằng OAuth của sàn (UCP không thấy mật khẩu) và domain cố định công bố trong spec.
 - **Liên quan:** BR-16, R-08, R-16. Sửa B1, B9.
+
+## Sửa đổi 25/11/2026: hủy đơn chưa thanh toán
+
+**Quyết định (Khang):** Agent được hủy một đơn **chưa thanh toán** mà không qua trang xác nhận, và user phải được báo. Mua hàng, và hủy đơn đã hoặc đang thanh toán, vẫn bắt buộc xác nhận như trên.
+
+- "Chưa thanh toán": trạng thái `pending_payment` và thanh toán `pending` hoặc `failed`, đọc trực tiếp từ sàn, không dùng cache.
+- Sàn phải kiểm tra và hủy trong cùng một bước (`cancelOrder(..., onlyIfUnpaid)`). Nếu user vừa trả tiền thì sàn từ chối và UCP đòi xác nhận. Sàn không làm được việc này nguyên tử thì phải từ chối, nghĩa là vẫn cần xác nhận.
+- Sàn tự báo cho user, không dựa vào lời của Agent. Kết quả trả cho Agent có `confirmed_by_user: false`.
+- BR-16 và G4 vẫn giữ cho mọi giao dịch có chuyển tiền. Hủy đơn chưa trả tiền không tạo hoàn tiền.
+- **Đánh đổi:** Agent hiểu sai, hoặc bị chèn lệnh, có thể hủy một đơn chưa trả tiền mà user muốn giữ (user phải đặt lại; hàng có thể đã hết hoặc đổi giá).
+
+## Sửa đổi 25/11/2026: bấm đồng ý là thực hiện luôn
+
+**Quyết định (Khang):** khi user bấm đồng ý trên trang xác nhận, UCP thực hiện ngay việc đó (đặt đơn hoặc hủy đơn), không chờ Agent gọi lại. Trước đó trang chỉ lưu xác nhận, nên nếu Agent không quay lại thì user đã bấm "đồng ý hủy" mà đơn vẫn còn.
+
+- UCP đi qua đúng `confirm_order` và `cancel_order` như intent của Agent, nên mọi kiểm tra giữ nguyên (UserLink, giá, xác nhận dùng một lần). UCP tự đặt idempotency key và chuyển sang sàn.
+- Mua: đặt xong thì chuyển user sang trang thanh toán của sàn. Hủy: trang hiện kết quả và link đơn.
+- Bấm hai lần hoặc tải lại không đặt hay hủy lần hai. Mất phản hồi khi đặt đơn thì đơn ở trạng thái đối soát, không gửi lại mù quáng; trang dặn user đừng mua lại.
+- Giá tăng, sàn từ chối hoặc lỗi khác: trang nói rõ là chưa thực hiện.
+- Agent vẫn gọi được `confirm_order` và `cancel_order`: chúng trả lại kết quả đã có, hoặc làm nốt nếu trang chưa làm được. Sau khi sàn từ chối hủy, `cancel_order` trả `UCP_CANNOT_CANCEL`.
+- Ràng buộc chính không đổi: Agent không tạo được thứ gì thay cho xác nhận của user.

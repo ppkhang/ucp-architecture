@@ -343,7 +343,7 @@ def _login_url(checkout_id: str | None = None, cancel_id: str | None = None) -> 
                      "VALUES (%s, %s, %s, now() + make_interval(secs => %s))",
                      (state, checkout_id, cancel_id, CONFIRM_LOGIN_TTL))
     return f"{s.mock_base_url}/oauth/authorize?" + urlencode(
-        {"client_id": s.mock_client_id, "redirect_uri": f"{s.public_url}/oauth/callback", "state": state})
+        {"client_id": s.mock_confirm_client_id, "redirect_uri": f"{s.public_url}/oauth/callback", "state": state})
 
 
 def start_confirmation(proposal_id: str) -> str:
@@ -393,7 +393,8 @@ def confirm_login(state: str, code: str, http: httpx.Client) -> str:
                            "RETURNING checkout_id, cancel_id", (state,)).fetchone()
     if not row:
         raise UCPError(ErrorCode.BAD_REQUEST, "unknown or expired confirmation request")
-    user, _ = identity.platform_login(code, http)  # the shop's tokens are discarded, only the identity matters
+    # the shop's tokens are discarded, only the identity matters
+    user, _ = identity.platform_login(code, http, get_settings().mock_confirm_client_id)
     wrong_user = UCPError(ErrorCode.FORBIDDEN, "this shop account is not the one linked to the agent")
     if row["cancel_id"]:
         req = _cancel_request(str(row["cancel_id"]))
@@ -407,10 +408,10 @@ def confirm_login(state: str, code: str, http: httpx.Client) -> str:
     if user != co["platform_user"]:
         raise wrong_user
     token = _sign_confirmation("confirm", co["id"], user, co["proposal_hash"])
-    return page("Confirm your order", _snapshot_html(co) + _agree_form(co["id"], token, "Agree and confirm"))
+    return page("Confirm your order", _snapshot_html(co) + _agree_form(co["id"], token, "Agree and place the order"))
 
 
-def record_confirmation(proposal_id: str, token: str) -> str:
+def record_confirmation(proposal_id: str, token: str) -> None:
     try:
         c = jwt.decode(token, get_settings().jwt_secret, algorithms=["HS256"])
     except jwt.InvalidTokenError:
@@ -419,7 +420,8 @@ def record_confirmation(proposal_id: str, token: str) -> str:
     if c.get("purpose") not in ("confirm", "cancel") or c.get("sub") != proposal_id:
         raise UCPError(ErrorCode.FORBIDDEN, "confirmation does not belong to this request")
     if c["purpose"] == "cancel":
-        return _record_cancel(proposal_id, c)
+        _record_cancel(proposal_id, c)
+        return
     co = _checkout(proposal_id)
     if not co["consumed_at"]:  # a resubmit after the order went through stays harmless
         _require_open(co)
@@ -432,7 +434,6 @@ def record_confirmation(proposal_id: str, token: str) -> str:
             (c["h"], c["user"], proposal_id, c["h"], c["user"], c["h"], c["user"])).fetchone()
     if not row:
         raise UCPError(ErrorCode.FORBIDDEN, "the order changed since you logged in, open the link again")
-    return page("Confirmed", "<p>Your order is confirmed. Go back to your assistant to finish.</p>")
 
 
 # -- cancel requests, confirmed on the same page ---------------------------------
@@ -459,7 +460,7 @@ def _cancel_html(req: dict) -> str:
             f"<p><b>Total {s['total']:,} VND</b></p><p>The shop decides whether it can still be cancelled.</p>")
 
 
-def _record_cancel(request_id: str, c: dict) -> str:
+def _record_cancel(request_id: str, c: dict) -> None:
     req = _cancel_request(request_id)
     if not req["idempotency_key"]:
         _require_pending_cancel(req)
@@ -470,7 +471,6 @@ def _record_cancel(request_id: str, c: dict) -> str:
             (c["h"], c["user"], request_id, c["h"], c["user"])).fetchone()
     if not row:
         raise UCPError(ErrorCode.FORBIDDEN, "this does not match the cancel request")
-    return page("Confirmed", "<p>You agreed to cancel. Go back to your assistant to finish.</p>")
 
 
 # -- confirm_order ------------------------------------------------------------
