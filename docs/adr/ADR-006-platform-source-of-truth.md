@@ -26,13 +26,13 @@ Hệ quả khi chạy thử kịch bản lỗi:
 
 UCP gọi sàn trực tiếp để báo giá, giữ hàng, đặt đơn, hủy đơn. Trạng thái đơn trong UCP là cache cập nhật qua webhook và đối soát.
 
-**Pros:** Đúng thực tế sở hữu dữ liệu. Oversell do sàn xử lý. Hủy đơn do sàn quyết định. **Cons:** `PlatformAdapter` tăng từ 4 lên 12 method. Phụ thuộc mức hợp tác của sàn (webhook, giữ hàng).
+**Pros:** Đúng thực tế sở hữu dữ liệu. Oversell do sàn xử lý. Hủy đơn do sàn quyết định. **Cons:** `PlatformAdapter` tăng từ 4 lên 13 method. Phụ thuộc mức hợp tác của sàn (webhook, giữ hàng).
 
 ## Decision
 
 **Chọn Option B.**
 
-- `PlatformAdapter` mới: `capabilities`, `searchProducts`, `getProduct`, `getQuote`, `createCheckout`, `renewHold`, `releaseHold`, `placeOrder`, `getOrder`, `cancelOrder`, `getRefund`, `parseEvent`.
+- `PlatformAdapter` mới: `capabilities`, `searchProducts`, `getProduct`, `getQuote`, `shippingOptions`, `createCheckout`, `renewHold`, `releaseHold`, `placeOrder`, `getOrder`, `cancelOrder`, `getRefund`, `parseEvent`.
 - Sàn không hỗ trợ giữ hàng: proposal ghi "tồn kho không được đảm bảo", hết hàng lúc `placeOrder` trả `INSUFFICIENT_STOCK` trước khi trừ tiền.
 - `inventory_status` chỉ còn là cache hiển thị. Bỏ `PricingEngine`, `PromotionEngine`. `InventoryChecker` thành client của `getQuote`.
 - Order thêm trạng thái `pending_payment`. Khi hủy, câu trả lời của sàn quyết định.

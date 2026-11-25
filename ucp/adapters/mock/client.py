@@ -17,6 +17,7 @@ ERRORS = {
     "NOT_FOUND": ErrorCode.NOT_FOUND,
     "INVALID_REQUEST": ErrorCode.BAD_REQUEST,
     "IDEMPOTENCY_CONFLICT": ErrorCode.IDEMPOTENCY_CONFLICT,
+    "CANNOT_CANCEL": ErrorCode.CANNOT_CANCEL,
 }
 
 
@@ -64,11 +65,29 @@ class MockPlatformAdapter:
     def _items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [{"variant_id": i["variant_id"], "quantity": i["qty"]} for i in items]
 
-    def get_quote(self, token: str, items: list[dict[str, Any]], region: str) -> dict[str, Any]:
-        return self._call("POST", "/quote", json={"items": self._items(items), "region": region})
+    def _basket(self, items: list[dict[str, Any]], region: str, shipping_method_id: str | None,
+                promo_code: str | None) -> dict[str, Any]:
+        return {"items": self._items(items), "region": region, "shipping_method_id": shipping_method_id,
+                "promo_code": promo_code}
 
-    def create_checkout(self, token: str, items: list[dict[str, Any]], region: str) -> dict[str, Any]:
-        return self._call("POST", "/checkouts", token=token, json={"items": self._items(items), "region": region})
+    def get_quote(self, token: str, items: list[dict[str, Any]], region: str, shipping_method_id: str | None = None,
+                  promo_code: str | None = None) -> dict[str, Any]:
+        return self._call("POST", "/quote", json=self._basket(items, region, shipping_method_id, promo_code))
+
+    def create_checkout(self, token: str, items: list[dict[str, Any]], region: str,
+                        shipping_method_id: str | None = None, promo_code: str | None = None) -> dict[str, Any]:
+        return self._call("POST", "/checkouts", token=token,
+                          json=self._basket(items, region, shipping_method_id, promo_code))
+
+    def shipping_options(self, region: str) -> list[dict[str, Any]]:
+        return [{"method_id": o["id"], "name": o["name"], "fee": o["fee"], "eta_days": o["eta_days"]}
+                for o in self._call("GET", "/shipping/options", params={"region": region})["items"]]
+
+    def renew_hold(self, token: str, platform_checkout_id: str) -> dict[str, Any]:
+        return self._call("POST", f"/checkouts/{platform_checkout_id}/renew", token=token)
+
+    def cancel_order(self, token: str, platform_order_id: str, idempotency_key: str) -> dict[str, Any]:
+        return self._call("POST", f"/orders/{platform_order_id}/cancel", token=token, key=idempotency_key)
 
     def place_order(self, token: str, checkout_id: str, idempotency_key: str) -> dict[str, Any]:
         return self._call("POST", "/orders", token=token, json={"checkout_id": checkout_id}, key=idempotency_key)

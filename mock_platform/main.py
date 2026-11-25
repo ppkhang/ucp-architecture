@@ -23,6 +23,8 @@ class Item(BaseModel):
 class QuoteIn(BaseModel):
     items: list[Item]
     region: str = "HCM"
+    shipping_method_id: str | None = None
+    promo_code: str | None = None
 
 
 class CheckoutIn(QuoteIn):
@@ -102,14 +104,20 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.post("/quote")
     async def quote(body: QuoteIn):
-        return platform.quote([i.model_dump() for i in body.items], body.region)
+        return platform.quote([i.model_dump() for i in body.items], body.region, body.shipping_method_id,
+                              body.promo_code)
+
+    @app.get("/shipping/options")
+    async def shipping_options(region: str = "HCM"):
+        return {"items": platform.shipping_options(region)}
 
     # -- checkout and orders (user token) ---------------------------------
 
     @app.post("/checkouts", status_code=201)
     async def create_checkout(body: CheckoutIn, authorization: str | None = Header(None)):
         user = user_of(authorization)
-        return platform.create_checkout(user, [i.model_dump() for i in body.items], body.region, body.address_id)
+        return platform.create_checkout(user, [i.model_dump() for i in body.items], body.region, body.address_id,
+                                        body.shipping_method_id, body.promo_code)
 
     @app.post("/checkouts/{checkout_id}/renew")
     async def renew(checkout_id: str, authorization: str | None = Header(None)):

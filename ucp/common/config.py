@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     sse_max_seconds: float = 300  # an event stream closes after this and the client reconnects
     sync_min_age_seconds: int = 30  # an order is not polled or reconciled sooner than this after its last touch
     checkout_ttl_seconds: int = 1800  # 30 minutes, v1.0 BR-14 (addendum B6)
+    # BR-26, per shop user and platform across all agents
+    max_open_checkouts: int = 3
+    checkout_cooldown_after: int = 3  # this many expiries in a row ...
+    checkout_cooldown_seconds: int = 600  # ... block new checkouts this long
 
     @field_validator("jwt_secret", "token_key")
     @classmethod
