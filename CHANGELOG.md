@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-25: Claude tự chờ user xác nhận
+
+- Tool MCP `confirm_order` và `cancel_order` có `wait_for_user`, `get_order` có `wait_for_payment`: lời gọi được giữ tối đa 50 giây và hoàn tất ngay khi user đồng ý hoặc trả tiền, nên user không phải báo lại cho Agent (BR-23). UCP vẫn kiểm tra xác nhận ở mỗi lần gọi.
+- Không đổi UCP API.
+
 ## 2026-11-25: Link đơn đã hủy
 
 - `cancel_order` trả thêm `order_url`, trang đơn hàng của sàn. Tool MCP yêu cầu Claude đưa link này cho user sau mỗi lần hủy.

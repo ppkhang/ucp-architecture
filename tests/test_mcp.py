@@ -18,6 +18,7 @@ pytest.importorskip("mcp")
 from mcp import Client  # noqa: E402
 
 from mcp_server.__main__ import http_app  # noqa: E402
+from mcp_server import server as mcp_tools  # noqa: E402
 from mcp_server.auth import CLAUDE_CALLBACK, allowed_redirect  # noqa: E402
 from mcp_server.server import build_server  # noqa: E402
 from mcp_server.ucp_client import UCPClient  # noqa: E402
@@ -151,6 +152,55 @@ def test_bad_api_key_and_a_dead_api_say_what_happened():
 
     r = asyncio.run(run())
     assert r.is_error and "did not answer" in r.content[0].text and "ucp_secret" not in r.content[0].text
+
+
+# -- waiting for the user, so they never have to report back ----------------------
+
+@pytest.fixture
+def quick_waits(monkeypatch):
+    monkeypatch.setattr(mcp_tools, "WAIT_SECONDS", 5)
+    monkeypatch.setattr(mcp_tools, "POLL_SECONDS", 0.05)
+
+
+def acts_during_the_wait(monkeypatch, user_acts):
+    """Runs the user's click the first time a tool pauses, while its call is still open."""
+    done = []
+
+    def pause(_):
+        if not done:
+            done.append(True)
+            user_acts()
+
+    monkeypatch.setattr(mcp_tools.time, "sleep", pause)
+    return done
+
+
+def test_one_waiting_call_finishes_once_the_user_agrees_and_pays(ucp, claude, monkeypatch, quick_waits):
+    co = claude.ok("create_checkout", items=[{"product_id": "p_mug", "qty": 1}])
+    clicked = acts_during_the_wait(monkeypatch, lambda: user_confirms(ucp, co["checkout_id"]))
+    order = claude.ok("confirm_order", checkout_id=co["checkout_id"], wait_for_user=True)
+    assert clicked and order["payment_url"] and len(ucp.shop.app.state.platform.orders) == 1
+    paid = acts_during_the_wait(monkeypatch, lambda: pay(ucp, order["payment_url"]))
+    assert claude.ok("get_order", order_id=order["order_id"], wait_for_payment=True)["status"] == "placed" and paid
+
+    err, _ = claude.error("cancel_order", order_id=order["order_id"])  # first call hands over the link at once
+    request_id = err["details"]["confirm_url"].rsplit("/", 1)[1]
+
+    def agree_to_cancel():
+        page = user_logs_in(ucp, request_id)
+        token = re.search(r"name=token value='([^']+)'", page.text).group(1)
+        ucp.post(f"/v1/confirm/{request_id}", content=f"token={token}", headers=FORM)
+
+    agreed = acts_during_the_wait(monkeypatch, agree_to_cancel)
+    assert claude.ok("cancel_order", order_id=order["order_id"], wait_for_user=True)["status"] == "cancelled" and agreed
+
+
+def test_waiting_cannot_stand_in_for_the_user(ucp, claude, monkeypatch, quick_waits):
+    monkeypatch.setattr(mcp_tools, "WAIT_SECONDS", 0.3)
+    co = claude.ok("create_checkout", items=[{"product_id": "p_mug", "qty": 1}])
+    err, text = claude.error("confirm_order", checkout_id=co["checkout_id"], wait_for_user=True)
+    assert err["code"] == "UCP_CONFIRMATION_REQUIRED" and "has not agreed yet" in text
+    assert not ucp.shop.app.state.platform.orders
 
 
 # -- OAuth for the HTTP transport ----------------------------------------------
