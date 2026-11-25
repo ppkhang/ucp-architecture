@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-25: Shop giả nhớ đăng nhập
+
+- `mock_platform`: sau khi đăng nhập, trình duyệt được nhớ 1 giờ bằng cookie (HttpOnly, SameSite=Lax). Trang xác nhận hiện "Continue as <user>" thay vì hỏi lại mật khẩu, có nút đổi tài khoản. Nút Continue cần token chống CSRF, trang không cho nhúng khung. "My orders" dùng `GET/POST/DELETE /shop/session` thay cho `POST /shop/my-orders`, không còn giữ mật khẩu trong trang.
+- Không đổi UCP hay hợp đồng API. User vẫn phải bấm đồng ý trên trang xác nhận của UCP cho mỗi lần mua và hủy.
+
 ## 2026-11-25: Bước 10, MCP server
 
 ### Thêm

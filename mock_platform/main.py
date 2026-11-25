@@ -6,17 +6,20 @@ import asyncio
 import html
 import json
 import os
+import secrets
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode
 
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from mock_platform.store import MODES, Config, Platform, PlatformError
+from mock_platform.store import MODES, SESSION_SECONDS, Config, Platform, PlatformError
 
 STATIC = Path(__file__).parent / "static"
+# Cookies ignore ports, so on localhost the UCP API receives this one too. A real shop has its own domain.
+COOKIE = "mock_shop_session"
 
 
 class Item(BaseModel):
@@ -62,6 +65,7 @@ def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
         f"<link rel=stylesheet href=/static/shop.css>"
         f"<header class=mast><h1>Mock shop</h1></header><main class=narrow>{body}</main>",
         status_code=status,
+        headers={"X-Frame-Options": "DENY", "Cache-Control": "no-store"},  # the buttons must not be framed
     )
 
 
@@ -107,14 +111,34 @@ def create_app(config: Config | None = None) -> FastAPI:
     async def home():
         return FileResponse(STATIC / "index.html")
 
-    @app.post("/shop/my-orders")
-    async def my_orders(body: LoginIn):
-        """For the "My orders" page. No session: the page sends the login with each request."""
+    def remember(response, user: str) -> None:
+        # Lax, not Strict: the browser arrives here by following UCP's redirect, and must still be signed in
+        response.set_cookie(COOKIE, platform.start_session(user), max_age=SESSION_SECONDS, httponly=True,
+                            samesite="lax")
+
+    def forget(request: Request, response) -> None:
+        platform.end_session(request.cookies.get(COOKIE))
+        response.delete_cookie(COOKIE)
+
+    @app.get("/shop/session")
+    async def shop_session(request: Request):
+        """For the "My orders" page: who is signed in, and their orders."""
+        s = platform.session(request.cookies.get(COOKIE))
+        user = s["user"] if s else None
+        mine = [o for o in reversed(list(platform.orders.values())) if o["user"] == user]
+        return {"user": user, "items": [platform.ui_order(o) for o in mine]}
+
+    @app.post("/shop/session", status_code=204)
+    async def sign_in(body: LoginIn, request: Request, response: Response):
         user = platform.login(body.username, body.password)
         if not user:
             raise PlatformError(401, "UNAUTHORIZED", "Wrong username or password")
-        mine = [o for o in reversed(list(platform.orders.values())) if o["user"] == user]
-        return {"items": [platform.ui_order(o) for o in mine]}
+        platform.end_session(request.cookies.get(COOKIE))
+        remember(response, user)
+
+    @app.delete("/shop/session", status_code=204)
+    async def sign_out(request: Request, response: Response):
+        forget(request, response)
 
     @app.get("/health")
     async def health():
@@ -248,22 +272,55 @@ def create_app(config: Config | None = None) -> FastAPI:
             f"<p class='items muted'>Your password stays with the shop. UCP never sees it.</p>"),
             401 if error else 200)
 
+    def _continue_form(q: dict[str, str], s: dict, error: str = "") -> HTMLResponse:
+        hidden = "".join(
+            f"<input type=hidden name={k} value='{html.escape(q.get(k, ''), quote=True)}'>"
+            for k in ("client_id", "redirect_uri", "state")
+        )
+        who = html.escape(s["user"])
+        return _page("Continue to UCP", _waybill(
+            "Signed in as " + s["user"],
+            f"<form method=post>{hidden}<input type=hidden name=csrf value='{s['csrf']}'>"
+            f"<p>UCP is asking to use your shop account. Continue only if you started this from your assistant.</p>"
+            f"<button class=primary name=action value=continue>Continue as {who}</button>"
+            f"<button name=action value=switch>Use another account</button></form>"
+            f"<p class='items muted'>Continuing does not buy or cancel anything. You agree to that on the next page.</p>"))
+
+    def _back_to_client(form: dict[str, str], user: str) -> RedirectResponse:
+        code = platform.issue_code(user, form["client_id"], form["redirect_uri"])
+        sep = "&" if "?" in form["redirect_uri"] else "?"
+        return RedirectResponse(form["redirect_uri"] + sep + urlencode({"code": code, "state": form.get("state", "")}),
+                                status_code=302)
+
     @app.get("/oauth/authorize", response_class=HTMLResponse)
-    async def authorize_page(client_id: str, redirect_uri: str, state: str = ""):
+    async def authorize_page(request: Request, client_id: str, redirect_uri: str, state: str = ""):
         _check_client(client_id, redirect_uri)
-        return _login_form({"client_id": client_id, "redirect_uri": redirect_uri, "state": state})
+        q = {"client_id": client_id, "redirect_uri": redirect_uri, "state": state}
+        s = platform.session(request.cookies.get(COOKIE))
+        return _continue_form(q, s) if s else _login_form(q)
 
     @app.post("/oauth/authorize")
     async def authorize(request: Request):
         form = {k: v[0] for k, v in parse_qs((await request.body()).decode()).items()}
         _check_client(form.get("client_id", ""), form.get("redirect_uri", ""))
+        action = form.get("action")
+        if action == "switch":
+            page = _login_form(form)
+            forget(request, page)
+            return page
+        if action == "continue":
+            s = platform.session(request.cookies.get(COOKIE))
+            # the token is only in the page the shop served, so another page cannot press Continue for the user
+            if not s or not secrets.compare_digest(form.get("csrf", "").encode(), s["csrf"].encode()):
+                return _login_form(form, "Please sign in again")
+            return _back_to_client(form, s["user"])
         user = platform.login(form.get("username", ""), form.get("password", ""))
         if not user:
             return _login_form(form, "Wrong username or password")
-        code = platform.issue_code(user, form["client_id"], form["redirect_uri"])
-        sep = "&" if "?" in form["redirect_uri"] else "?"
-        return RedirectResponse(form["redirect_uri"] + sep + urlencode({"code": code, "state": form.get("state", "")}),
-                                status_code=302)
+        platform.end_session(request.cookies.get(COOKIE))
+        done = _back_to_client(form, user)
+        remember(done, user)
+        return done
 
     @app.post("/oauth/token")
     async def token(request: Request):

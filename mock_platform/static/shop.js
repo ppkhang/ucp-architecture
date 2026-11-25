@@ -7,7 +7,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const vnd = (n) => `${Number(n).toLocaleString("en-US")} VND`;
 const time = (iso) => new Date(iso).toLocaleTimeString("en-GB");
 let state = null;
-let login = null; // kept in memory only: a reload signs out
+let user = null; // who the shop's sign-in cookie belongs to
 let myOrders = [];
 const seen = new Map(); // order id -> status, to mark the waybill that just changed
 const drawn = new Map();
@@ -118,10 +118,10 @@ function render() {
         <span class="muted test-only">${esc(v.id)}</span></span><strong>${esc(vnd(v.price))}</strong></li>`;
     }).join("")}</ul></article>`).join(""));
 
-  $("#signin").hidden = !!login;
-  $("#signed").hidden = !login;
-  $("#who").textContent = login?.username || "";
-  draw("#my-orders", !login ? "" : myOrders.length
+  $("#signin").hidden = !!user;
+  $("#signed").hidden = !user;
+  $("#who").textContent = user || "";
+  draw("#my-orders", !user ? "" : myOrders.length
     ? myOrders.map((o) => waybill(o, { owner: true })).join("")
     : '<p class="empty">You have no orders in this shop yet.</p>');
 }
@@ -130,7 +130,7 @@ const send = (path, body) => api(path, { method: "POST", headers: { "Content-Typ
 
 async function refresh() {
   state = await api("/_admin/state");
-  if (login) myOrders = (await send("/shop/my-orders", login)).items;
+  ({ user, items: myOrders } = await api("/shop/session"));
   render();
 }
 
@@ -150,7 +150,7 @@ async function act(button) {
     if (price === "" || stock === "") throw new Error("Price and stock both need a number.");
     await post(`/_admin/variants/${encodeURIComponent(id)}?price=${Number(price)}&stock=${Number(stock)}`);
   }
-  if (what === "signout") { login = null; myOrders = []; }
+  if (what === "signout") await api("/shop/session", { method: "DELETE" });
   button.blur();
   await refresh();
 }
@@ -184,11 +184,10 @@ $("#signin").addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target));
   try {
-    myOrders = (await send("/shop/my-orders", data)).items;
-    login = data;
+    await send("/shop/session", data);
     event.target.reset();
     problem("");
-    render();
+    await refresh();
   } catch (e) {
     problem(e.message);
   }

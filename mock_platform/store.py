@@ -29,6 +29,7 @@ CANCELLABLE = {"pending_payment", "placed", "processing"}
 
 SHIPPING_FEES = {"HCM": 20_000, "HN": 25_000}
 DEFAULT_SHIPPING_FEE = 35_000
+SESSION_SECONDS = 3600  # how long the shop remembers a browser
 # method id -> (name, surcharge on the region fee, days to arrive)
 SHIPPING_METHODS = {"standard": ("Standard", 0, 3), "express": ("Express", 30_000, 1)}
 # code -> (VND off the subtotal, smallest subtotal it applies to)
@@ -130,6 +131,7 @@ class Platform:
         self.codes: dict[str, dict[str, Any]] = {}
         self.tokens: dict[str, dict[str, Any]] = {}
         self.refresh_tokens: dict[str, dict[str, Any]] = {}
+        self.sessions: dict[str, dict[str, Any]] = {}  # browser sign-ins
         self.sender: Callable[[dict, dict[str, str], bytes], None] | None = None
 
     def now(self) -> datetime:
@@ -496,6 +498,19 @@ class Platform:
     def login(self, username: str, password: str) -> str | None:
         u = self.users.get(username)
         return username if u and secrets.compare_digest(u["password"], password) else None
+
+    def start_session(self, user: str) -> str:
+        sid = secrets.token_urlsafe(32)
+        self.sessions[sid] = {"user": user, "csrf": secrets.token_urlsafe(24),
+                              "expires": self.now() + timedelta(seconds=SESSION_SECONDS)}
+        return sid
+
+    def session(self, sid: str | None) -> dict[str, Any] | None:
+        s = self.sessions.get(sid or "")
+        return s if s and s["expires"] > self.now() else None
+
+    def end_session(self, sid: str | None) -> None:
+        self.sessions.pop(sid or "", None)
 
     def issue_code(self, user: str, client_id: str, redirect_uri: str) -> str:
         code = secrets.token_urlsafe(24)
