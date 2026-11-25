@@ -12,11 +12,13 @@ INSTRUCTIONS = """Shop through UCP for the user. The only platform is "mock", a 
 
 1. If a tool answers UCP_NO_USER_LINK or UCP_LINK_EXPIRED, call link_account and give the user the auth_url.
 2. search_products and get_product, then create_checkout. Show the user the proposal and give them confirm_url.
-3. You cannot confirm a purchase or a cancellation. Only the user can, on that page, signed in to the shop.
+3. You cannot confirm a purchase, or the cancellation of a paid order. Only the user can, on that page, signed in to the shop.
    Never say they agreed. Wait for them to tell you, then call confirm_order.
 4. confirm_order returns payment_url. The user pays there. get_events or get_order shows when it is paid.
-5. cancel_order first answers UCP_CONFIRMATION_REQUIRED with details.confirm_url. Give it to the user, wait,
-   then call cancel_order again. The shop may still refuse (UCP_CANNOT_CANCEL).
+5. Call cancel_order only when the user asked you to cancel. An unpaid order is cancelled at once: if the result
+   has confirmed_by_user false, tell the user plainly that it was cancelled without a confirmation page. A paid
+   order answers UCP_CONFIRMATION_REQUIRED with details.confirm_url: give it to the user, wait, then call
+   cancel_order again. The shop may refuse (UCP_CANNOT_CANCEL).
 6. If a call fails because UCP or the shop did not answer, retry with the idempotency_key named in the error.
    Use a new key (leave it out) for a new request."""
 
@@ -110,7 +112,8 @@ def build_server(ucp: UCPClient, **settings: Any) -> MCPServer:
 
     @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
     def cancel_order(order_id: str, reason: str | None = None, idempotency_key: str | None = None) -> dict:
-        """Cancel an order. The first call returns a confirm_url for the user; call again after they agree."""
+        """Cancel an order, only when the user asked. Unpaid: cancelled at once, tell the user. Paid: returns a
+        confirm_url for the user; call again after they agree."""
         params = {"order_id": order_id} | ({"reason": reason} if reason else {})
         return ucp.intent("cancel_order", params, idempotency_key)
 

@@ -18,6 +18,7 @@ ERRORS = {
     "INVALID_REQUEST": ErrorCode.BAD_REQUEST,
     "IDEMPOTENCY_CONFLICT": ErrorCode.IDEMPOTENCY_CONFLICT,
     "CANNOT_CANCEL": ErrorCode.CANNOT_CANCEL,
+    "ORDER_PAID": ErrorCode.CONFIRMATION_REQUIRED,
 }
 
 
@@ -86,8 +87,10 @@ class MockPlatformAdapter:
     def renew_hold(self, token: str, platform_checkout_id: str) -> dict[str, Any]:
         return self._call("POST", f"/checkouts/{platform_checkout_id}/renew", token=token)
 
-    def cancel_order(self, token: str, platform_order_id: str, idempotency_key: str) -> dict[str, Any]:
-        return self._call("POST", f"/orders/{platform_order_id}/cancel", token=token, key=idempotency_key)
+    def cancel_order(self, token: str, platform_order_id: str, idempotency_key: str,
+                     only_if_unpaid: bool = False) -> dict[str, Any]:
+        return self._call("POST", f"/orders/{platform_order_id}/cancel", token=token, key=idempotency_key,
+                          params={"only_if_unpaid": "true"} if only_if_unpaid else None)
 
     def place_order(self, token: str, checkout_id: str, idempotency_key: str) -> dict[str, Any]:
         return self._call("POST", "/orders", token=token, json={"checkout_id": checkout_id}, key=idempotency_key)

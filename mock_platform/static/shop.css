@@ -141,3 +141,5 @@ body:not(.testing) #refunds span.test-only { display: none; }
   .mast nav { order: 3; flex-basis: 100%; }
   .mast .view { margin-left: auto; }
 }
+.count { display: inline-block; min-width: 1.35rem; margin-left: .3rem; border-radius: 999px; background: var(--orange); color: #fff; font-size: .8rem; text-align: center; }
+.banner p { margin: 0 0 .6rem; }

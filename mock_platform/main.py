@@ -126,7 +126,15 @@ def create_app(config: Config | None = None) -> FastAPI:
         s = platform.session(request.cookies.get(COOKIE))
         user = s["user"] if s else None
         mine = [o for o in reversed(list(platform.orders.values())) if o["user"] == user]
-        return {"user": user, "items": [platform.ui_order(o) for o in mine]}
+        alerts = [a for a in platform.alerts if a["user"] == user and not a["seen"]]
+        return {"user": user, "items": [platform.ui_order(o) for o in mine], "alerts": alerts}
+
+    @app.delete("/shop/alerts", status_code=204)  # DELETE, so another site cannot send it without a preflight
+    async def dismiss_alerts(request: Request):
+        s = platform.session(request.cookies.get(COOKIE))
+        for a in platform.alerts:
+            if s and a["user"] == s["user"]:
+                a["seen"] = True
 
     @app.post("/shop/session", status_code=204)
     async def sign_in(body: LoginIn, request: Request, response: Response):
@@ -201,11 +209,11 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     @app.post("/orders/{order_id}/cancel")
     async def cancel_order(order_id: str, authorization: str | None = Header(None),
-                           idempotency_key: str | None = Header(None)):
+                           idempotency_key: str | None = Header(None), only_if_unpaid: bool = False):
         user = user_of(authorization)
         if not idempotency_key:
             raise PlatformError(400, "INVALID_REQUEST", "Idempotency-Key header is required")
-        return platform.cancel_order(user, order_id, idempotency_key)
+        return platform.cancel_order(user, order_id, idempotency_key, only_if_unpaid)
 
     @app.get("/refunds/{ref}")
     async def refund(ref: str, authorization: str | None = Header(None)):

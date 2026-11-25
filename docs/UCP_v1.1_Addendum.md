@@ -104,7 +104,7 @@ v1.0 có 4 method: `searchProducts`, `getProduct`, `createCheckout`, `cancelOrde
 | `renewHold(checkoutId)`, `releaseHold(checkoutId)` | Điều khiển việc giữ hàng | Mới | B6, B11 |
 | `placeOrder(checkoutId, idempotencyKey)` | Tạo đơn, trả link thanh toán | Mới | B4, B5 |
 | `getOrder(id hoặc idempotencyKey)` | Tra trạng thái, kể cả sau timeout | Mới | B4, B5 |
-| `cancelOrder(id, idempotencyKey)` | Sàn chấp nhận hoặc từ chối, trả mã hoàn tiền | Sửa | B4, B7 |
+| `cancelOrder(id, idempotencyKey, onlyIfUnpaid)` | Sàn chấp nhận hoặc từ chối, trả mã hoàn tiền | Sửa | B4, B7 |
 | `getRefund(refundRef)` | Trạng thái hoàn tiền | Mới | B7 |
 | `parseEvent(headers, body)` | Xác thực và chuẩn hóa webhook từ sàn | Mới | B4 |
 
@@ -192,7 +192,7 @@ Hai instance Redis làm tổng số container thành 14 (6 service, 5 database, 
 | Thu hồi quyền (B8) | JWT sống 5 phút, kèm kiểm tra session trong Redis mỗi lần gọi. Trade kiểm tra lại UserLink ở `confirm_order` |
 | API key (B10) | Chỉ có `read_catalog`. `view_order` cần UserLink |
 | Scope (B9) | Thêm `cancel_order`. Bỏ `initiate_payment` (không endpoint nào dùng, xem A6) |
-| Hủy đơn (B9) | Dùng cùng trang xác nhận như checkout, nên BR-16 áp dụng cho cả hoàn tiền |
+| Hủy đơn (B9) | Dùng cùng trang xác nhận như checkout, nên BR-16 áp dụng cho cả hoàn tiền. Sửa đổi 25/11: đơn chưa thanh toán được hủy ngay và sàn báo cho user (ADR-007) |
 | Giữ hàng để phá (B15) | **BR-26 mới:** giới hạn số checkout đang mở mỗi user mỗi sàn, tính trên tất cả Agent (khởi điểm 3), có thời gian chờ sau nhiều lần để hết hạn liên tiếp |
 | Token của sàn (B16) | Mã hóa, lưu tách khỏi UserLink, xoay vòng định kỳ. Liên kết hết hạn trả `LINK_EXPIRED` |
 

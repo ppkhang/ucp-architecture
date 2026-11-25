@@ -22,7 +22,7 @@ def test_state_holds_no_secrets(shop):
 
 
 def test_my_orders_follows_the_cookie(shop):
-    assert shop.get("/shop/session").json() == {"user": None, "items": []}
+    assert shop.get("/shop/session").json() == {"user": None, "items": [], "alerts": []}
     assert shop.post("/shop/session", json={**PASSWORD, "password": "nope"}).status_code == 401
     r = shop.post("/shop/session", json=PASSWORD)
     cookie = r.headers["set-cookie"].lower()
@@ -70,3 +70,14 @@ def test_switching_account_and_expiry_sign_out(shop):
     authorize(shop, **PASSWORD)
     shop.post("/_admin/clock", params={"advance_seconds": 3601})
     assert "type=password" in continue_page(shop)
+
+
+def test_a_user_sees_and_dismisses_only_their_own_alerts(shop):
+    alerts = shop.app.state.platform.alerts
+    for user in ("khang", "linh"):
+        alerts.append({"user": user, "order_id": f"ord_{user}", "total": 1, "created_at": "x", "seen": False})
+    shop.delete("/shop/alerts")  # signed out: changes nothing
+    shop.post("/shop/session", json=PASSWORD)
+    assert [a["order_id"] for a in shop.get("/shop/session").json()["alerts"]] == ["ord_khang"]
+    assert shop.delete("/shop/alerts").status_code == 204
+    assert shop.get("/shop/session").json()["alerts"] == [] and not alerts[1]["seen"]

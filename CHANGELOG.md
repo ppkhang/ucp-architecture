@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-25: Hủy đơn chưa thanh toán không cần xác nhận
+
+### Đổi ADR và hợp đồng (Khang quyết định)
+- ADR-007 sửa đổi: `cancel_order` trên đơn chưa thanh toán hủy ngay, trả `confirmed_by_user: false`, và sàn báo cho user. Đơn đã hoặc đang thanh toán vẫn cần trang xác nhận.
+- `PlatformAdapter.cancelOrder` nhận `onlyIfUnpaid`; sàn kiểm tra và hủy trong cùng một bước để không hủy nhầm đơn vừa trả tiền.
+- Shop giả: lưu thông báo cho user, hiện ở "My orders" và số đếm trên tab.
+- Cập nhật `specs/openapi.yaml`, `specs/APISpecs.md`, addendum (C2, C6). Mô tả tool MCP cập nhật theo.
+
 ## 2026-11-25: Shop giả nhớ đăng nhập
 
 - `mock_platform`: sau khi đăng nhập, trình duyệt được nhớ 1 giờ bằng cookie (HttpOnly, SameSite=Lax). Trang xác nhận hiện "Continue as <user>" thay vì hỏi lại mật khẩu, có nút đổi tài khoản. Nút Continue cần token chống CSRF, trang không cho nhúng khung. "My orders" dùng `GET/POST/DELETE /shop/session` thay cho `POST /shop/my-orders`, không còn giữ mật khẩu trong trang.

@@ -87,11 +87,80 @@ def test_user_agrees_then_the_shop_cancels_and_gives_a_refund_reference(ucp):
     assert cancel(ucp, auth, order_id, "c-9").json() == r.json()
 
 
-def test_unpaid_order_cancels_without_a_refund(ucp):
+def alerts(c):
+    return shop(c).alerts
+
+
+@pytest.mark.parametrize("failed_payment", [False, True])
+def test_unpaid_order_is_cancelled_at_once_and_the_shop_alerts_the_user(ucp, failed_payment):
     _, auth = setup(ucp)
     order_id = placed(ucp, auth, paid=False)
-    agrees_to_cancel(ucp, cancel(ucp, auth, order_id))
-    assert cancel(ucp, auth, order_id).json()["refund_ref"] is None
+    if failed_payment:
+        shop(ucp).pay(shop_order(ucp)["id"], "fail")
+    r = cancel(ucp, auth, order_id)
+    assert r.status_code == 200, r.text
+    assert r.json() == {"order_id": order_id, "status": "cancelled", "refund_ref": None, "confirmed_by_user": False}
+    assert shop_order(ucp)["status"] == "cancelled" and order_status(ucp, auth, order_id) == "cancelled"
+    assert [(a["user"], a["order_id"]) for a in alerts(ucp)] == [("khang", shop_order(ucp)["id"])]
+    assert cancel(ucp, auth, order_id).json() == r.json() and len(alerts(ucp)) == 1  # same key: replayed
+    assert not rows("SELECT 1 FROM trade.cancel_requests")
+
+
+def test_paid_while_cancelling_needs_the_user_after_all(ucp, monkeypatch):
+    _, auth = setup(ucp)
+    order_id = placed(ucp, auth, paid=False)
+    real = MockPlatformAdapter.cancel_order
+
+    def user_pays_first(self, *a, **k):
+        shop(ucp).pay(shop_order(ucp)["id"], "auto")  # after UCP looked, before the shop gets the cancel
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(MockPlatformAdapter, "cancel_order", user_pays_first)
+    r = cancel(ucp, auth, order_id)
+    assert code(r) == "UCP_CONFIRMATION_REQUIRED" and r.json()["error"]["details"]["confirm_url"]
+    assert shop_order(ucp)["status"] == "placed" and not alerts(ucp) and not shop(ucp).refunds
+
+
+def test_the_cached_status_does_not_decide_whether_to_ask(ucp):
+    _, auth = setup(ucp)
+    order_id = placed(ucp, auth, paid=False)
+    shop(ucp).sender = lambda *a: None  # the "paid" webhook gets lost
+    pay(ucp, f"http://localhost:9000/pay/{shop_order(ucp)['id']}")
+    assert order_status(ucp, auth, order_id) == "pending_payment"
+    assert code(cancel(ucp, auth, order_id)) == "UCP_CONFIRMATION_REQUIRED"
+    assert shop_order(ucp)["status"] == "placed"
+
+
+def test_unlinked_agent_cannot_cancel_even_an_unpaid_order(ucp):
+    agent_id, _, auth = agent(ucp)
+    link_id, _ = link(ucp, agent_id, auth)
+    order_id = placed(ucp, auth, paid=False)
+    ucp.delete(f"/v1/agents/{agent_id}/links/{link_id}", headers=auth)
+    assert cancel(ucp, auth, order_id).status_code == 403
+    assert shop_order(ucp)["status"] == "pending_payment"
+
+
+@pytest.mark.parametrize("reached_the_shop", [True, False])
+def test_lost_answer_while_cancelling_unpaid(ucp, monkeypatch, reached_the_shop):
+    _, auth = setup(ucp)
+    order_id = placed(ucp, auth, paid=False)
+    shop(ucp).sender = lambda *a: None
+    real = MockPlatformAdapter.cancel_order
+
+    def lost(self, *a, **k):
+        if reached_the_shop:
+            real(self, *a, **k)
+        raise PlatformTimeout()
+
+    with monkeypatch.context() as m:
+        m.setattr(MockPlatformAdapter, "cancel_order", lost)
+        r = cancel(ucp, auth, order_id)
+    if reached_the_shop:
+        assert r.json()["confirmed_by_user"] is False
+    else:
+        assert code(r) == "UCP_PLATFORM_UNAVAILABLE"
+        assert cancel(ucp, auth, order_id).status_code == 200
+    assert shop_order(ucp)["status"] == "cancelled" and len(alerts(ucp)) == 1
 
 
 def test_shop_already_shipped_so_it_refuses_even_though_the_cache_is_stale(ucp):
@@ -115,7 +184,9 @@ def test_a_purchase_confirmation_cannot_confirm_a_cancel(ucp):
     page = user_logs_in(ucp, co["checkout_id"])
     buy_token = re.search(r"name=token value='([^']+)'", page.text).group(1)
     ucp.post(f"/v1/confirm/{co['checkout_id']}", content=f"token={buy_token}", headers=FORM)
-    order_id = confirm_order(ucp, auth, co["checkout_id"]).json()["order_id"]
+    order = confirm_order(ucp, auth, co["checkout_id"]).json()
+    pay(ucp, order["payment_url"])  # only a paid order asks the user
+    order_id = order["order_id"]
     request_id = cancel(ucp, auth, order_id).json()["error"]["details"]["confirm_url"].rsplit("/", 1)[1]
     r = ucp.post(f"/v1/confirm/{request_id}", content=f"token={buy_token}", headers=FORM)
     assert (r.status_code, code(r)) == (403, "UCP_FORBIDDEN")

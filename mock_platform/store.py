@@ -29,6 +29,7 @@ CANCELLABLE = {"pending_payment", "placed", "processing"}
 
 SHIPPING_FEES = {"HCM": 20_000, "HN": 25_000}
 DEFAULT_SHIPPING_FEE = 35_000
+UNPAID = ("pending", "failed")  # payment statuses where no money has moved or is moving
 SESSION_SECONDS = 3600  # how long the shop remembers a browser
 # method id -> (name, surcharge on the region fee, days to arrive)
 SHIPPING_METHODS = {"standard": ("Standard", 0, 3), "express": ("Express", 30_000, 1)}
@@ -132,6 +133,7 @@ class Platform:
         self.tokens: dict[str, dict[str, Any]] = {}
         self.refresh_tokens: dict[str, dict[str, Any]] = {}
         self.sessions: dict[str, dict[str, Any]] = {}  # browser sign-ins
+        self.alerts: list[dict[str, Any]] = []  # what the shop tells a user; a real shop would also email
         self.sender: Callable[[dict, dict[str, str], bytes], None] | None = None
 
     def now(self) -> datetime:
@@ -456,7 +458,9 @@ class Platform:
 
     # -- cancel and refund -----------------------------------------------
 
-    def cancel_order(self, user: str, order_id: str, key: str) -> dict[str, Any]:
+    def cancel_order(self, user: str, order_id: str, key: str, only_if_unpaid: bool = False) -> dict[str, Any]:
+        """only_if_unpaid: the caller did not ask the user, so refuse unless no money has moved. The check and the
+        cancel are one step, so a payment cannot slip in between. The user gets an alert."""
         if key in self.cancel_keys:
             if self.cancel_keys[key] != order_id:
                 raise PlatformError(422, "IDEMPOTENCY_CONFLICT", "key already used for another order")
@@ -465,7 +469,12 @@ class Platform:
         o = self.get_order(user, order_id)
         if o["status"] not in CANCELLABLE:
             raise PlatformError(409, "CANNOT_CANCEL", f"order is {o['status']}")
-        self._cancel(o, reason="user")
+        if only_if_unpaid and not (o["status"] == "pending_payment" and o["payment_status"] in UNPAID):
+            raise PlatformError(409, "ORDER_PAID", "the order is paid or being paid, the user has to agree")
+        self._cancel(o, reason="assistant_unpaid" if only_if_unpaid else "user")
+        if only_if_unpaid:
+            self.alerts.append({"user": user, "order_id": order_id, "total": o["total"],
+                                "created_at": self.iso(self.now()), "seen": False})
         self.cancel_keys[key] = order_id
         return {"order": self.order_view(o), "refund_ref": o["refund_ref"]}
 

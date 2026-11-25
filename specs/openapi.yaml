@@ -283,6 +283,7 @@ paths:
         UCP_IDEMPOTENCY_CONFLICT (ADR-010).
         Needed scope: create_order for the checkout methods and confirm_order, cancel_order for cancel_order.
         confirm_order and cancel_order need a valid user confirmation (ADR-007), else UCP_CONFIRMATION_REQUIRED.
+        Exception: cancel_order on an order that is not paid needs none; the platform alerts the user.
         For cancel_order that error carries details.confirm_url and details.expires_at: send the user there,
         then call cancel_order again. select_shipping_method and apply_promotion make a new quote at the
         platform and drop any earlier confirmation. extend_checkout works once and never past the platform's hold.
@@ -844,6 +845,9 @@ components:
         order_id: { type: string, format: uuid }
         status: { const: cancelled }
         refund_ref: { type: [string, "null"] }
+        confirmed_by_user:
+          type: boolean
+          description: Present and false when an unpaid order was cancelled without the confirmation page.
 
     OrderStatus:
       type: string

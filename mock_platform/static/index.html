@@ -12,7 +12,7 @@
     <nav aria-label="Pages">
       <a href="#control">Control</a>
       <a href="#store">Store</a>
-      <a href="#orders">My orders</a>
+      <a href="#orders">My orders <span class="count" id="alert-count" hidden></span></a>
     </nav>
     <div class="view" role="group" aria-label="View">
       <button type="button" data-view="demo">Demo</button>
@@ -77,6 +77,7 @@
         <button class="primary">Show my orders</button>
       </form>
       <p id="signed" hidden>Signed in as <strong id="who"></strong>. <button type="button" data-act="signout">Sign out</button></p>
+      <div class="banner" id="alerts" role="alert" hidden></div>
       <div id="my-orders"></div>
     </section>
   </main>

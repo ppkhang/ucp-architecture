@@ -8,6 +8,7 @@ const vnd = (n) => `${Number(n).toLocaleString("en-US")} VND`;
 const time = (iso) => new Date(iso).toLocaleTimeString("en-GB");
 let state = null;
 let user = null; // who the shop's sign-in cookie belongs to
+let alerts = [];
 let myOrders = [];
 const seen = new Map(); // order id -> status, to mark the waybill that just changed
 const drawn = new Map();
@@ -121,6 +122,12 @@ function render() {
   $("#signin").hidden = !!user;
   $("#signed").hidden = !user;
   $("#who").textContent = user || "";
+  $("#alerts").hidden = !alerts.length;
+  $("#alert-count").hidden = !alerts.length;
+  $("#alert-count").textContent = alerts.length || "";
+  draw("#alerts", alerts.map((a) =>
+    `<p>Your assistant cancelled order ${esc(a.order_id)} (${esc(vnd(a.total))}) at ${esc(time(a.created_at))} without asking you, because it was not paid. If you did not want this, check what your assistant was doing.</p>`
+  ).join("") + (alerts.length ? '<button type="button" data-act="dismiss">Got it</button>' : ""));
   draw("#my-orders", !user ? "" : myOrders.length
     ? myOrders.map((o) => waybill(o, { owner: true })).join("")
     : '<p class="empty">You have no orders in this shop yet.</p>');
@@ -130,7 +137,7 @@ const send = (path, body) => api(path, { method: "POST", headers: { "Content-Typ
 
 async function refresh() {
   state = await api("/_admin/state");
-  ({ user, items: myOrders } = await api("/shop/session"));
+  ({ user, items: myOrders, alerts = [] } = await api("/shop/session"));
   render();
 }
 
@@ -151,6 +158,7 @@ async function act(button) {
     await post(`/_admin/variants/${encodeURIComponent(id)}?price=${Number(price)}&stock=${Number(stock)}`);
   }
   if (what === "signout") await api("/shop/session", { method: "DELETE" });
+  if (what === "dismiss") await api("/shop/alerts", { method: "DELETE" });
   button.blur();
   await refresh();
 }

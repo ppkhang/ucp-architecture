@@ -61,7 +61,7 @@ Hiện thực theo `docs/UCP_v1.1_Addendum.md` phần D (thứ tự xây 11 bư�
 | 6 | Trade: tạo checkout, trang xác nhận của user, `confirm_order`, webhook, đơn `placed` (lát cắt đầu tiên từ đầu đến cuối) | Xong |
 | 7 | Độ tin cậy: outbox, ExpiryWorker, OrderSyncWorker (đối soát + poll đơn), làm mới token nền tảng, retry idempotency kẹt | Xong |
 | 8 | Notification: log event theo từng agent, SSE `/v1/events/stream`, phát lại `/v1/events?after=` | Xong |
-| 9 | Hủy đơn qua trang xác nhận, `select_shipping_method`, `apply_promotion`, `extend_checkout`, `cancel_checkout`, BR-26 | Xong |
+| 9 | Hủy đơn (đơn đã trả tiền qua trang xác nhận), `select_shipping_method`, `apply_promotion`, `extend_checkout`, `cancel_checkout`, BR-26 | Xong |
 | 10 | MCP server (`mcp_server/`): 14 tool, stdio và Streamable HTTP có OAuth | Đã chạy cục bộ; chưa demo qua custom connector |
 | 11 | Deploy | Chưa làm |
 
