@@ -7,3 +7,7 @@ __pycache__/
 PROGRESS.md
 AGENTS.md
 CLAUDE.md
+# design skill working files; only the surface brief is kept
+.impeccable/*
+!.impeccable/surfaces/
+!.impeccable/design.json

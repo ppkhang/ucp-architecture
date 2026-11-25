@@ -6,13 +6,17 @@ import asyncio
 import html
 import json
 import os
+from pathlib import Path
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, Header, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from mock_platform.store import MODES, Config, Platform, PlatformError
+
+STATIC = Path(__file__).parent / "static"
 
 
 class Item(BaseModel):
@@ -35,6 +39,11 @@ class OrderIn(BaseModel):
     checkout_id: str
 
 
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+
 class ConfigIn(BaseModel):
     mode: str | None = None
     slow_delay: float | None = Field(None, ge=0)
@@ -48,11 +57,17 @@ class ConfigIn(BaseModel):
 
 def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
     return HTMLResponse(
-        f"<!doctype html><meta charset=utf-8><title>{html.escape(title)}</title>"
-        f"<body style='font-family:sans-serif;max-width:28rem;margin:3rem auto'>"
-        f"<h2>{html.escape(title)}</h2>{body}</body>",
+        f"<!doctype html><html lang=en><meta charset=utf-8>"
+        f"<meta name=viewport content='width=device-width, initial-scale=1'><title>{html.escape(title)}</title>"
+        f"<link rel=stylesheet href=/static/shop.css>"
+        f"<header class=mast><h1>Mock shop</h1></header><main class=narrow>{body}</main>",
         status_code=status,
     )
+
+
+def _waybill(heading: str, body: str) -> str:
+    return (f"<article class=waybill><div class=wb-head><h2 class=route>{html.escape(heading)}</h2></div>"
+            f"{body}</article>")
 
 
 def create_app(config: Config | None = None) -> FastAPI:
@@ -83,6 +98,23 @@ def create_app(config: Config | None = None) -> FastAPI:
     def user_of(authorization: str | None) -> str:
         token = authorization[7:] if authorization and authorization.lower().startswith("bearer ") else None
         return platform.user_for_token(token)
+
+    # -- the shop's own pages ---------------------------------------------
+
+    app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def home():
+        return FileResponse(STATIC / "index.html")
+
+    @app.post("/shop/my-orders")
+    async def my_orders(body: LoginIn):
+        """For the "My orders" page. No session: the page sends the login with each request."""
+        user = platform.login(body.username, body.password)
+        if not user:
+            raise PlatformError(401, "UNAUTHORIZED", "Wrong username or password")
+        mine = [o for o in reversed(list(platform.orders.values())) if o["user"] == user]
+        return {"items": [platform.ui_order(o) for o in mine]}
 
     @app.get("/health")
     async def health():
@@ -158,19 +190,28 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     # -- payment page (the user, in a browser) ----------------------------
 
+    def _pay_body(o: dict) -> str:
+        rows = "".join(f"<li><span>{ln['quantity']} x {html.escape(ln['product_name'])} ({html.escape(ln['name'])})</span>"
+                       f"<span>{ln['amount']:,} VND</span></li>" for ln in platform.ui_order(o)["lines"])
+        extra = f"<li><span>Shipping</span><span>{o['shipping_fee']:,} VND</span></li>"
+        if o["discount"]:
+            extra += f"<li><span>Discount</span><span>-{o['discount']:,} VND</span></li>"
+        return (f"<ul class=items>{rows}{extra}<li><strong>Total</strong><strong>{o['total']:,} VND</strong></li></ul>")
+
     @app.get("/pay/{order_id}", response_class=HTMLResponse)
     async def pay_page(order_id: str):
         o = platform.orders.get(order_id)
         if not o:
-            return _page("Not found", "<p>No such order.</p>", 404)
+            return _page("Not found", _waybill("Not found", "<p class=items>No such order.</p>"), 404)
         if o["status"] != "pending_payment":
-            return _page("Order " + order_id, f"<p>Status: {html.escape(o['status'])}</p>")
-        form = (
-            f"<p>Total: <b>{o['total']:,} VND</b> (payment status: {o['payment_status']})</p>"
-            f"<form method=post><button name=outcome value=auto>Pay</button> "
-            f"<button name=outcome value=fail>Decline</button></form>"
-        )
-        return _page("Pay order " + order_id, form)
+            status = html.escape(o["status"].replace("_", " "))
+            return _page("Order " + order_id, _waybill(
+                "Nothing to pay", f"{_pay_body(o)}<p class=items>This order is {status}.</p>"))
+        failed = "<p class=error>The last payment failed. You can try again.</p>" if o["payment_status"] == "failed" else ""
+        form = (f"<form method=post>{failed}<button class=primary name=outcome value=auto>Pay {o['total']:,} VND</button>"
+                f"<button name=outcome value=fail>Decline payment</button></form>"
+                f"<p class='items muted'>This is a test shop. No money moves.</p>")
+        return _page("Pay order " + order_id, _waybill("Pay your order", _pay_body(o) + form))
 
     @app.post("/pay/{order_id}")
     async def pay(order_id: str, request: Request):
@@ -179,8 +220,11 @@ def create_app(config: Config | None = None) -> FastAPI:
         if request.headers.get("accept", "").startswith("application/json"):
             return platform.pay(order_id, outcome)
         order = platform.pay(order_id, outcome)
-        msg = "Payment received." if order["payment_status"] == "succeeded" else "Payment failed. You can try again."
-        return _page("Order " + order_id, f"<p>{msg}</p><p><a href='/pay/{html.escape(order_id)}'>Back</a></p>")
+        paid = order["payment_status"] == "succeeded"
+        msg = "Payment received." if paid else "Payment failed. You can try again."
+        back = "" if paid else f"<a class=button href='/pay/{html.escape(order_id)}'>Try again</a>"
+        return _page("Order " + order_id, _waybill(
+            msg, f"<div class=actions>{back}<a class=button href='/#orders'>See my orders</a></div>"))
 
     # -- OAuth login for the confirmation page ----------------------------
 
@@ -194,11 +238,15 @@ def create_app(config: Config | None = None) -> FastAPI:
             f"<input type=hidden name={k} value='{html.escape(q.get(k, ''), quote=True)}'>"
             for k in ("client_id", "redirect_uri", "state")
         )
-        err = f"<p style='color:#b00'>{html.escape(error)}</p>" if error else ""
-        return _page("Sign in to the mock shop",
-                     f"{err}<form method=post>{hidden}<p><input name=username placeholder=username></p>"
-                     f"<p><input name=password type=password placeholder=password></p>"
-                     f"<button>Sign in</button></form>", 401 if error else 200)
+        err = f"<p class=error role=alert>{html.escape(error)}</p>" if error else ""
+        return _page("Sign in to the mock shop", _waybill(
+            "Sign in to continue",
+            f"<form method=post>{err}{hidden}"
+            f"<label>Username <input name=username autocomplete=username required></label>"
+            f"<label>Password <input name=password type=password autocomplete=current-password required></label>"
+            f"<button class=primary>Sign in</button></form>"
+            f"<p class='items muted'>Your password stays with the shop. UCP never sees it.</p>"),
+            401 if error else 200)
 
     @app.get("/oauth/authorize", response_class=HTMLResponse)
     async def authorize_page(client_id: str, redirect_uri: str, state: str = ""):
@@ -242,6 +290,11 @@ def create_app(config: Config | None = None) -> FastAPI:
         return {"items": platform.users[user_of(authorization)]["addresses"]}
 
     # -- test control (not part of the shop's real API) --------------------
+
+    @app.get("/_admin/state")
+    async def admin_state():
+        platform.tick()  # admin paths skip the middleware's tick, and the panel should show lapsed holds
+        return platform.snapshot()
 
     @app.get("/_admin/config")
     async def get_config():

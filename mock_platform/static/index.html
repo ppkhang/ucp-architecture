@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UCP mock shop</title>
+  <link rel="stylesheet" href="/static/shop.css">
+</head>
+<body>
+  <header class="mast">
+    <h1>Mock shop</h1>
+    <nav aria-label="Pages">
+      <a href="#control">Control</a>
+      <a href="#store">Store</a>
+      <a href="#orders">My orders</a>
+    </nav>
+    <div class="view" role="group" aria-label="View">
+      <button type="button" data-view="demo">Demo</button>
+      <button type="button" data-view="testing">Testing</button>
+    </div>
+  </header>
+  <main>
+    <p class="banner" id="problem" role="alert" hidden></p>
+    <p class="banner" id="mode-banner" hidden></p>
+
+    <section id="control" class="page">
+      <div class="split">
+        <div>
+          <h2>Orders in the shop</h2>
+          <div id="all-orders"></div>
+        </div>
+        <div>
+          <div class="test-only sheet">
+            <h2>Test settings</h2>
+            <div class="row">
+              <label>Shop behaviour
+                <select id="mode">
+                  <option value="always_succeed">Payments succeed</option>
+                  <option value="always_fail">Payments fail</option>
+                  <option value="random">Payments fail at random</option>
+                  <option value="webhook_error">Webhooks have bad signatures</option>
+                  <option value="slow">Shop answers slowly</option>
+                </select>
+              </label>
+              <button type="button" data-act="clock" data-seconds="600">Skip 10 minutes</button>
+              <button type="button" data-act="reset" class="danger">Reset shop</button>
+            </div>
+            <p class="muted">Skipping time can make UCP reject this shop's webhooks until a reset: it only accepts timestamps within 5 minutes.</p>
+          </div>
+          <div class="sheet">
+            <h2>Webhooks sent</h2>
+            <ul class="log" id="events"></ul>
+          </div>
+          <div class="sheet">
+            <h2>Refunds</h2>
+            <div class="scroll" id="refunds"></div>
+          </div>
+          <div class="test-only sheet">
+            <h2>Stock and price</h2>
+            <div class="scroll" id="stock"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="store" class="page" hidden>
+      <h2>Store</h2>
+      <p>This shop does not sell from here. Ask your assistant to buy, then agree on the confirmation page it sends you.</p>
+      <div class="products" id="products"></div>
+    </section>
+
+    <section id="orders" class="page" hidden>
+      <h2>My orders</h2>
+      <form id="signin" class="sheet row">
+        <label>Username <input name="username" autocomplete="username" required></label>
+        <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary">Show my orders</button>
+      </form>
+      <p id="signed" hidden>Signed in as <strong id="who"></strong>. <button type="button" data-act="signout">Sign out</button></p>
+      <div id="my-orders"></div>
+    </section>
+  </main>
+  <script src="/static/shop.js"></script>
+</body>
+</html>

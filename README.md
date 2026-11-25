@@ -73,6 +73,7 @@ python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().de
 
 docker compose -f deploy/docker-compose.yml up -d --build   # api :8000, mock platform :9000
 curl localhost:8000/health
+# giao diện shop giả (chỉ dùng trên máy, /_admin chưa có xác thực): http://localhost:9000  (thêm ?view=testing để hiện nút kiểm thử)
 
 pip install -e ".[dev]"
 pytest   # cần Postgres chạy (docker compose up -d postgres)
